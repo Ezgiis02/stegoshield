@@ -278,8 +278,8 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('analysis-controls-box').style.display = 'flex';
         document.getElementById('placeholder-histogram').style.display = 'none';
 
-        runAnalysis();
         runSignatureDetection();
+        runAnalysis();
         runRSAnalysis();
         renderHistogram(analyzedImageData);
         showToast('info', 'Analiz Başlatıldı', `${img.width}×${img.height} piksel taranıyor.`);
