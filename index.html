@@ -4,17 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>StegoShield - Steganografi & Steganaliz Suite</title>
-    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800;900&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Main Style -->
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="glow-bg"></div>
     <div class="app-container">
-        
+
         <!-- Header -->
         <header>
             <div class="logo-area">
@@ -56,16 +54,15 @@
         <!-- Main Workspace Area -->
         <main class="workspace-area">
 
-            <!-- ENCODE SECTION -->
+            <!-- ================================================================
+                 ENCODE SECTION
+                 ================================================================ -->
             <section id="section-encode" class="tab-content active">
                 <div class="grid-2col">
                     <!-- Left: Upload & Config -->
                     <div class="card panel-config">
-                        <div class="card-header">
-                            <h2>1. Taşıyıcı Görsel & Ayarlar</h2>
-                        </div>
-                        
-                        <!-- Drag & Drop Zone -->
+                        <div class="card-header"><h2>1. Taşıyıcı Görsel & Ayarlar</h2></div>
+
                         <div class="upload-zone" id="drop-encode">
                             <input type="file" id="file-encode" accept="image/png, image/jpeg" style="display: none;">
                             <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -76,7 +73,6 @@
                             <div class="file-info" id="info-encode"></div>
                         </div>
 
-                        <!-- Config Fields -->
                         <div class="input-group">
                             <label for="msg-encode">Gizlenecek Gizli Mesaj</label>
                             <textarea id="msg-encode" placeholder="Buraya gizlemek istediğiniz mesajı yazın..." disabled></textarea>
@@ -84,7 +80,7 @@
 
                         <div class="input-group row-fields">
                             <div class="field-item">
-                                <label for="pass-encode">Parola (İsteğe Bağlı - Şifreleme İçin)</label>
+                                <label for="pass-encode">Parola (İsteğe Bağlı)</label>
                                 <div class="password-wrapper">
                                     <input type="password" id="pass-encode" placeholder="Parola girin..." disabled>
                                     <button class="btn-toggle-pass" type="button" onclick="togglePasswordVisibility('pass-encode')">Göster</button>
@@ -101,20 +97,28 @@
                             </div>
                         </div>
 
+                        <div class="input-group">
+                            <label for="depth-encode">Bit Derinliği (LSB Katmanı)</label>
+                            <select id="depth-encode" disabled>
+                                <option value="1">LSB-1 — Standart (görünmez)</option>
+                                <option value="2">LSB-2 — 2× Kapasite (hafif iz)</option>
+                                <option value="3">LSB-3 — 3× Kapasite (belirgin iz)</option>
+                            </select>
+                        </div>
+
                         <div class="capacity-bar-wrapper">
                             <div class="capacity-bar" id="capacity-bar-fill"></div>
                         </div>
                         <button id="btn-encode-action" class="btn btn-primary btn-block" disabled onclick="handleEncode()">
-                            <svg viewBox="0 0 24 24" class="btn-icon"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM9 6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6zm9 14H6V10h12v10zm-6-3c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2z" fill="currentColor"/></svg>
+                            <svg viewBox="0 0 24 24" class="btn-icon"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM9 6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6zm9 14H6V10h12v10zm-6-3c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9 2 2 2z" fill="currentColor"/></svg>
                             Mesajı Görsele Gizle
                         </button>
                     </div>
 
                     <!-- Right: Previews & Download -->
                     <div class="card panel-preview">
-                        <div class="card-header">
-                            <h2>2. Önizleme ve İndirme</h2>
-                        </div>
+                        <div class="card-header"><h2>2. Önizleme ve İndirme</h2></div>
+
                         <div class="preview-container">
                             <div class="preview-box">
                                 <h3>Orijinal Görsel</h3>
@@ -132,11 +136,11 @@
                             </div>
                         </div>
 
-                        <!-- Pixel Diff Preview -->
+                        <!-- Pixel Diff Map -->
                         <div class="diff-section" id="diff-section" style="display: none;">
                             <div class="diff-header">
                                 <h3>Piksel Farkı Haritası <span class="diff-badge">×255 büyütülmüş</span></h3>
-                                <p class="diff-desc">Değiştirilen pikseller renkli, dokunulmayan pikseller siyah gösterilir. Mesajın görselde kapladığı alan.</p>
+                                <p class="diff-desc">Değiştirilen pikseller renkli gösterilir.</p>
                             </div>
                             <div class="canvas-wrapper diff-canvas-wrapper">
                                 <canvas id="canvas-diff-encode"></canvas>
@@ -144,6 +148,28 @@
                             <div class="diff-stats" id="diff-stats"></div>
                         </div>
 
+                        <!-- Comparison Slider -->
+                        <div class="comparison-section" id="comparison-section" style="display: none;">
+                            <div class="diff-header">
+                                <h3>Yan Yana Karşılaştırma <span class="diff-badge">Kaydırıcı</span></h3>
+                                <p class="diff-desc">Kaydırıcıyı hareket ettirerek orijinal (sol) ve stego (sağ) görseli karşılaştırın.</p>
+                            </div>
+                            <div class="canvas-wrapper diff-canvas-wrapper">
+                                <canvas id="canvas-comparison"></canvas>
+                            </div>
+                            <input type="range" id="comparison-slider" class="comparison-range" min="0" max="100" value="50" oninput="updateComparisonSlider(this.value)">
+                        </div>
+
+                        <!-- Histogram Comparison -->
+                        <div class="histogram-compare-section" id="histogram-compare-section" style="display: none;">
+                            <div class="diff-header">
+                                <h3>Histogram Karşılaştırması <span class="diff-badge">Orijinal vs Stego</span></h3>
+                                <p class="diff-desc">Soluk çizgiler orijinal, parlak çizgiler stego görselin renk dağılımı. Steganografi sonrası hafif düzleşme beklenir.</p>
+                            </div>
+                            <canvas id="canvas-histogram-compare" class="histogram-compare-canvas"></canvas>
+                        </div>
+
+                        <!-- Capacity Stats -->
                         <div class="encode-stats-bar" id="encode-stats" style="display: none;">
                             <div class="stat-bubble">
                                 <span class="bubble-title">Gereken Kapasite:</span>
@@ -159,24 +185,28 @@
                             </div>
                         </div>
 
-                        <button id="btn-download-stego" class="btn btn-success btn-block" style="display: none;" onclick="downloadStegoImage()">
-                            <svg viewBox="0 0 24 24" class="btn-icon"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" fill="currentColor"/></svg>
-                            Stego Görseli İndir (.PNG)
-                        </button>
+                        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                            <button id="btn-compare" class="btn btn-secondary" style="display: none; flex: 1;" onclick="toggleComparison()">
+                                <svg viewBox="0 0 24 24" class="btn-icon"><path d="M10 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h5v2h2V1h-2v2zm0 15H5l5-6v6zm9-15h-5v2h5v13l-5-6v6h5c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z" fill="currentColor"/></svg>
+                                Karşılaştır
+                            </button>
+                            <button id="btn-download-stego" class="btn btn-success" style="display: none; flex: 2;" onclick="downloadStegoImage()">
+                                <svg viewBox="0 0 24 24" class="btn-icon"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" fill="currentColor"/></svg>
+                                Stego Görseli İndir (.PNG)
+                            </button>
+                        </div>
                     </div>
                 </div>
             </section>
 
-            <!-- DECODE SECTION -->
+            <!-- ================================================================
+                 DECODE SECTION
+                 ================================================================ -->
             <section id="section-decode" class="tab-content">
                 <div class="grid-2col">
-                    <!-- Left: Upload & Passcode -->
                     <div class="card panel-config">
-                        <div class="card-header">
-                            <h2>1. Stego Görsel & Parola</h2>
-                        </div>
+                        <div class="card-header"><h2>1. Stego Görsel & Parola</h2></div>
 
-                        <!-- Drag & Drop Zone -->
                         <div class="upload-zone" id="drop-decode">
                             <input type="file" id="file-decode" accept="image/png" style="display: none;">
                             <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -201,12 +231,9 @@
                         </button>
                     </div>
 
-                    <!-- Right: Decoded Result -->
                     <div class="card panel-result">
-                        <div class="card-header">
-                            <h2>2. Çözülen Gizli Mesaj</h2>
-                        </div>
-                        
+                        <div class="card-header"><h2>2. Çözülen Gizli Mesaj</h2></div>
+
                         <div class="canvas-wrapper decode-canvas-wrapper" style="max-height: 200px; margin-bottom: 1.5rem;">
                             <canvas id="canvas-stego-decode"></canvas>
                             <div class="canvas-placeholder" id="placeholder-stego-decode">Görsel Yüklenmedi</div>
@@ -223,6 +250,10 @@
                                 <span class="meta-value" id="meta-channel">—</span>
                             </div>
                             <div class="meta-item">
+                                <span class="meta-label">Derinlik</span>
+                                <span class="meta-value" id="meta-depth">—</span>
+                            </div>
+                            <div class="meta-item">
                                 <span class="meta-label">Şifreleme</span>
                                 <span class="meta-value" id="meta-encrypt">—</span>
                             </div>
@@ -231,6 +262,7 @@
                                 <span class="meta-value" id="meta-length">—</span>
                             </div>
                         </div>
+
                         <button id="btn-copy-msg" class="btn btn-success btn-block" style="display: none;" onclick="copyDecodedMessage()">
                             <svg viewBox="0 0 24 24" class="btn-icon"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" fill="currentColor"/></svg>
                             Mesajı Panoya Kopyala
@@ -239,14 +271,14 @@
                 </div>
             </section>
 
-            <!-- ANALYZE SECTION -->
+            <!-- ================================================================
+                 ANALYZE SECTION
+                 ================================================================ -->
             <section id="section-analyze" class="tab-content">
                 <div class="grid-analysis">
                     <!-- Column 1: Upload & Stats -->
                     <div class="card panel-analysis-left">
-                        <div class="card-header">
-                            <h2>Görsel Yükle & İstatistikler</h2>
-                        </div>
+                        <div class="card-header"><h2>Görsel Yükle & İstatistikler</h2></div>
 
                         <div class="upload-zone" id="drop-analyze">
                             <input type="file" id="file-analyze" accept="image/png, image/jpeg" style="display: none;">
@@ -266,7 +298,7 @@
                             </div>
                         </div>
 
-                        <!-- Statistical Result Card -->
+                        <!-- Chi-Square Statistical Result -->
                         <div class="analysis-results-box" id="analysis-results" style="display: none;">
                             <div class="gauge-container">
                                 <svg class="gauge" viewBox="0 0 100 100">
@@ -275,15 +307,13 @@
                                 </svg>
                                 <div class="gauge-text">
                                     <span id="gauge-percentage">0%</span>
-                                    <span class="gauge-label">Gizleme Olasılığı</span>
+                                    <span class="gauge-label" id="gauge-label">Gizleme Olasılığı</span>
                                 </div>
                             </div>
-                            
                             <div class="analysis-summary-card" id="analysis-status-card">
                                 <h3 id="analysis-status-title">Sonuç Bekleniyor</h3>
                                 <p id="analysis-status-desc">Lütfen analiz etmek için bir resim yükleyin.</p>
                             </div>
-
                             <div class="metric-details">
                                 <div class="metric-row">
                                     <span>Chi-Square P-Değeri:</span>
@@ -299,14 +329,46 @@
                                 </div>
                             </div>
                         </div>
+
+                        <!-- RS Steganalysis Results -->
+                        <div class="rs-section" id="rs-section" style="display: none;">
+                            <div class="rs-header">
+                                <h3>RS Steganaliz <span class="diff-badge">Fridrich Yöntemi</span></h3>
+                                <p class="rs-desc">Regular/Singular piksel grubu analizi. R₁ &gt; R₋₁ ise steganografi ihtimali yüksek.</p>
+                            </div>
+                            <div class="metric-details">
+                                <div class="metric-row">
+                                    <span>R₁ — Pozitif flip, regular:</span>
+                                    <strong id="rs-r1">—</strong>
+                                </div>
+                                <div class="metric-row">
+                                    <span>S₁ — Pozitif flip, singular:</span>
+                                    <strong id="rs-s1">—</strong>
+                                </div>
+                                <div class="metric-row">
+                                    <span>R₋₁ — Negatif flip, regular:</span>
+                                    <strong id="rs-rm1">—</strong>
+                                </div>
+                                <div class="metric-row">
+                                    <span>S₋₁ — Negatif flip, singular:</span>
+                                    <strong id="rs-sm1">—</strong>
+                                </div>
+                                <div class="metric-row">
+                                    <span>Tahmini Gömme Oranı:</span>
+                                    <strong id="rs-rate">—</strong>
+                                </div>
+                            </div>
+                            <div class="rs-verdict-row">
+                                <span>RS Karar:</span>
+                                <strong id="rs-verdict">—</strong>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Column 2: Visual Steganalysis -->
                     <div class="card panel-analysis-right">
-                        <div class="card-header">
-                            <h2>Görsel Steganaliz (LSB Haritası)</h2>
-                        </div>
-                        
+                        <div class="card-header"><h2>Görsel Steganaliz (LSB Haritası)</h2></div>
+
                         <div class="analysis-visualizer">
                             <div class="canvas-wrapper visual-canvas-wrapper">
                                 <canvas id="canvas-analysis-lsb"></canvas>
@@ -316,7 +378,14 @@
 
                         <div class="analysis-controls" id="analysis-controls-box" style="display: none;">
                             <div class="control-row">
-                                <label for="analysis-channel">Gösterilecek LSB Kanalı:</label>
+                                <label for="lsb-view-mode">Görüntüleme Modu:</label>
+                                <select id="lsb-view-mode" onchange="runAnalysis()">
+                                    <option value="raw">Ham LSB (İkili)</option>
+                                    <option value="heatmap">Isı Haritası (Yoğunluk)</option>
+                                </select>
+                            </div>
+                            <div class="control-row">
+                                <label for="analysis-channel">LSB Kanalı:</label>
                                 <select id="analysis-channel" onchange="runAnalysis()">
                                     <option value="rgb">Birleşik RGB LSB Haritası</option>
                                     <option value="r">Sadece Kırmızı LSB</option>
@@ -325,20 +394,18 @@
                                 </select>
                             </div>
                             <div class="control-row">
-                                <label for="analysis-contrast">Kontrast Güçlendirme:</label>
+                                <label for="analysis-contrast">Kontrast:</label>
                                 <input type="range" id="analysis-contrast" min="1" max="10" value="10" oninput="runAnalysis()">
                             </div>
                             <div class="alert-info-box">
-                                <p><strong>💡 İpucu:</strong> Eğer görselde gizli bir mesaj varsa, LSB haritasında belirli sınırlı alanlarda veya resmin tamamında yoğun bir <strong>gürültü/karıncalanma bloğu</strong> görürsünüz. Doğal ve temiz görsellerde ise LSB haritası daha yumuşak, resmin ana konturlarını takip eden desenler oluşturur.</p>
+                                <p><strong>💡 İpucu:</strong> Eğer görselde gizli mesaj varsa, LSB haritasında verinin yazıldığı piksellerde yoğun <strong>gürültü/karıncalanma bloğu</strong> görürsünüz. Isı haritası modunda bu alan farklı renkte belirginleşir.</p>
                             </div>
                         </div>
                     </div>
 
                     <!-- Column 3: Histograms -->
                     <div class="card panel-analysis-bottom">
-                        <div class="card-header">
-                            <h2>Renk Dağılım Histogram Analizi</h2>
-                        </div>
+                        <div class="card-header"><h2>Renk Dağılım Histogram Analizi</h2></div>
                         <div class="histogram-container">
                             <div class="histogram-box">
                                 <h3>Renk Frekans Histogramı (Kırmızı, Yeşil, Mavi Dağılımı)</h3>
@@ -350,37 +417,45 @@
                 </div>
             </section>
 
-            <!-- LEARN SECTION -->
+            <!-- ================================================================
+                 LEARN SECTION
+                 ================================================================ -->
             <section id="section-learn" class="tab-content">
                 <div class="learn-container">
                     <div class="learn-header">
                         <h2>Steganografi ve Steganaliz Bilgi Bankası</h2>
                         <p>StegoShield platformunda kullanılan teknolojiler ve teorik siber güvenlik altyapısı.</p>
                     </div>
-
                     <div class="learn-grid">
                         <div class="learn-card">
                             <div class="learn-card-icon">🔑</div>
                             <h3>En Önemsiz Bit (LSB) Mantığı</h3>
-                            <p>Bir resim piksellerden oluşur ve her pikselin rengi 8 bitlik (0-255 arası) sayısal değerlerle saklanır. LSB (Least Significant Bit), bu 8 bitlik sayının en sağındaki, yani basamak değeri en düşük olan bitidir. Bu biti 0'dan 1'e veya 1'den 0'a değiştirmek pikselin rengini 256'da 1 oranında değiştirir. Bu küçük değişim insan gözü tarafından algılanamaz, bu yüzden bu katmana gizli veri saklanır.</p>
+                            <p>Bir resim piksellerden oluşur ve her pikselin rengi 8 bitlik (0-255 arası) sayısal değerlerle saklanır. LSB-1 tek biti, LSB-2 iki biti, LSB-3 üç biti değiştirir. Kapasite artar ama görsel kalite düşer. Bu değişimler çıplak gözle neredeyse algılanamaz.</p>
                         </div>
-
                         <div class="learn-card">
                             <div class="learn-card-icon">🔒</div>
-                            <h3>Neden Parolalı Şifreleme Kullanıyoruz?</h3>
-                            <p>Sadece LSB bitlerine veri yazmak güvenli değildir. Kötü amaçlı bir aktör, resmin LSB bitlerini okuduğunda gizli mesajı doğrudan elde edebilir. Bu güvenlik açığını kapatmak için mesajı resme gömmeden önce bir <strong>parola (key)</strong> ile şifreleriz. Mesaj şifrelendiğinde piksellere yazılan veri tamamen rastgele bir bit dizisi haline gelir. Doğru parola girilmeden sadece anlamsız gürültü elde edilir.</p>
+                            <h3>RC4 Stream Cipher Şifreleme</h3>
+                            <p>Sadece LSB bitlerine veri yazmak güvenli değildir. Kötü amaçlı bir aktör LSB bitlerini okuyunca mesajı doğrudan elde edebilir. Bu açığı kapatmak için mesajı RC4 akış şifresiyle şifreleriz. Parola olmadan sadece anlamsız rastgele bit dizisi elde edilir.</p>
                         </div>
-
                         <div class="learn-card">
                             <div class="learn-card-icon">📊</div>
-                            <h3>Chi-Square (Ki-Kare) Testi Nedir?</h3>
-                            <p>Normal görsellerde yan yana duran renklerin sıklıkları (örneğin 128 ve 129 sayı değerleri) yumuşak geçişler nedeniyle birbirine yakındır. Ancak görselin içine rastgele şifrelenmiş veri yazıldığında, LSB bitleri yapay bir şekilde dağıtılır ve bu renk çiftlerinin frekansları birbirine eşitlenir. Chi-Square testi, resimdeki piksellerin frekans çiftlerini analiz ederek LSB dağılımındaki bu yapay dengelenmeyi ölçer ve gizli veri saklanma olasılığını matematiksel olarak hesaplar.</p>
+                            <h3>Chi-Square (Ki-Kare) Testi</h3>
+                            <p>Normal görsellerde yan yana renklerin (128 ve 129 gibi) sıklıkları birbirine yakındır. Rastgele şifrelenmiş veri yazıldığında bu çiftlerin frekansları yapay olarak eşitlenir. Chi-Square testi bu dengelenmeyi ölçer. Ancak düşük kaplama oranlarında (%5-10 altı) farkı algılamak güçtür.</p>
                         </div>
-
+                        <div class="learn-card">
+                            <div class="learn-card-icon">📐</div>
+                            <h3>RS Steganaliz (Fridrich Yöntemi)</h3>
+                            <p>Chi-Square'den daha güçlüdür; düşük kaplamada da çalışır. Her piksel çifti için "pozitif flip" (LSB XOR 1) ve "negatif flip" (çift→-1, tek→+1) uygulanır. Düzgünlük artan gruplara Regular (R), azalanına Singular (S) denir. Stego varsa R₁ &gt; R₋₁ asimetrisi belirginleşir.</p>
+                        </div>
                         <div class="learn-card">
                             <div class="learn-card-icon">👁️</div>
                             <h3>Görsel Steganaliz (Visual Attack)</h3>
-                            <p>Görsel stegananaliz, bir resimdeki piksellerin LSB dışındaki tüm bitlerini (ilk 7 biti) sıfırlayarak sadece LSB katmanını görünür hale getirme işlemidir. Eğer resme bir veri gizlenmişse, LSB haritasında verinin yazıldığı piksellerde yoğun, dikdörtgen şeklinde karıncalı bir gürültü bloğu belirir. Eğer resim temizse, LSB haritası resmin kendi şeklini yansıtan silüetsi ve homojen bir dağılım sergiler.</p>
+                            <p>Piksellerin LSB bitlerini görünür kılma işlemidir. Veri gizlenmiş alanlarda dikdörtgen şeklinde yoğun karıncalı gürültü bloğu belirir. Isı haritası modunda bu blok renkli yoğunluk farkı olarak daha net görünür. Temiz görsellerde ise LSB haritası doğal ve homojendir.</p>
+                        </div>
+                        <div class="learn-card">
+                            <div class="learn-card-icon">🛡️</div>
+                            <h3>StegoShield Protokol İmzası</h3>
+                            <p>Tüm istatistiksel yöntemlerin ötesinde, StegoShield kendi protokolüyle gizlenmiş görselleri kesin olarak tespit eder. LSB'lerin ilk 8 baytında "STG" magic bytes + kanal + bit derinliği + şifreleme + payload boyutu saklanır. İmza tespit edilirse olasılık hesabına gerek yoktur.</p>
                         </div>
                     </div>
                 </div>
@@ -388,17 +463,12 @@
 
         </main>
 
-        <!-- Footer -->
         <footer>
             <p>© 2026 StegoShield Security Suite. Siber Güvenlik Dönem Projesi.</p>
         </footer>
-
     </div>
 
-    <!-- Toast Notification Container -->
     <div id="toast-container" class="toast-container"></div>
-
-    <!-- Application Script -->
     <script src="app.js"></script>
 </body>
 </html>
