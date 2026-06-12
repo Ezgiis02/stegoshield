@@ -379,20 +379,23 @@ function handleEncode() {
 function renderDiffMap(origData, stegoData, width, height) {
     const section = document.getElementById('diff-section');
     const canvas  = document.getElementById('canvas-diff-encode');
-    canvas.width  = width;
-    canvas.height = height;
     const ctx     = canvas.getContext('2d');
-    const diff    = ctx.createImageData(width, height);
 
     let changedPixels = 0;
     let changedBits   = 0;
+    let lastChangedIdx = 0;
+
+    // Build full-size diff in an offscreen buffer
+    const offscreen = document.createElement('canvas');
+    offscreen.width = width; offscreen.height = height;
+    const octx = offscreen.getContext('2d');
+    const diff  = octx.createImageData(width, height);
 
     for (let i = 0; i < origData.length; i += 4) {
         const dR = Math.abs(stegoData[i]   - origData[i]);
         const dG = Math.abs(stegoData[i+1] - origData[i+1]);
         const dB = Math.abs(stegoData[i+2] - origData[i+2]);
 
-        // Amplify to 255 so single-bit changes become visible
         diff.data[i]   = dR * 255;
         diff.data[i+1] = dG * 255;
         diff.data[i+2] = dB * 255;
@@ -401,14 +404,43 @@ function renderDiffMap(origData, stegoData, width, height) {
         if (dR || dG || dB) {
             changedPixels++;
             changedBits += (dR ? 1 : 0) + (dG ? 1 : 0) + (dB ? 1 : 0);
+            lastChangedIdx = i;
         }
     }
+    octx.putImageData(diff, 0, 0);
 
-    ctx.putImageData(diff, 0, 0);
+    // Calculate the bounding box of changed pixels with padding
+    const lastPixel  = lastChangedIdx / 4;
+    const lastRow    = Math.floor(lastPixel / width);
+    const lastCol    = lastPixel % width;
+
+    // Crop region: rows 0..lastRow+2, cols 0..width (messages are sequential)
+    const cropH   = Math.min(height, lastRow + 3);
+    const padding = 16;
+    const cropY   = 0;
+    const cropX   = 0;
+    const cropW   = Math.min(width,  lastCol > width * 0.5 ? width : lastCol + padding * 4);
+
+    // Display size — fit within canvas wrapper (~300px max height)
+    const displayW = 600;
+    const scale    = displayW / cropW;
+    const displayH = Math.round(cropH * scale);
+
+    canvas.width  = displayW;
+    canvas.height = Math.min(displayH, 320);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(offscreen, cropX, cropY, cropW, cropH, 0, 0, displayW, Math.min(displayH, 320));
+
+    // Draw a subtle border to show the crop boundary
+    ctx.strokeStyle = 'rgba(0,229,255,0.5)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(1, 1, displayW - 2, Math.min(displayH, 320) - 2);
+
     section.style.display = 'block';
 
     const totalPixels = width * height;
     const coveragePct = (changedPixels / totalPixels * 100).toFixed(2);
+    const zoomLabel   = cropW < width ? ` (sol ${cropW}×${cropH} px gösteriliyor)` : '';
 
     document.getElementById('diff-stats').innerHTML = `
         <div class="diff-stat"><span>Değiştirilen Piksel</span><strong>${changedPixels.toLocaleString('tr-TR')}</strong></div>
@@ -416,6 +448,9 @@ function renderDiffMap(origData, stegoData, width, height) {
         <div class="diff-stat"><span>Kaplama Oranı</span><strong>${coveragePct}%</strong></div>
         <div class="diff-stat"><span>Yazılan Bit</span><strong>${changedBits.toLocaleString('tr-TR')}</strong></div>
     `;
+
+    document.querySelector('.diff-desc').textContent =
+        `Mesajın görselde kapladığı alan büyütülerek gösterilir${zoomLabel}. Kırmızı=R, Yeşil=G, Mavi=B kanalı değişti.`;
 }
 
 function downloadStegoImage() {
