@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StegoShield - Steganografi & Steganaliz Suite</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800;900&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Main Style -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="glow-bg"></div>
+    <div class="app-container">
+        
+        <!-- Header -->
+        <header>
+            <div class="logo-area">
+                <svg class="shield-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    <path class="shield-inner" d="M12 6v11M9 12h6" stroke-dasharray="2 2"/>
+                </svg>
+                <div class="logo-text">
+                    <h1>STEGO<span>SHIELD</span></h1>
+                    <p>Steganografi & Steganaliz Platformu</p>
+                </div>
+            </div>
+            <div class="system-status">
+                <span class="status-indicator online"></span>
+                <span class="status-text">Sistem Aktif</span>
+            </div>
+        </header>
+
+        <!-- Navigation Tabs -->
+        <nav class="tab-navigation">
+            <button class="tab-btn active" id="tab-encode" onclick="switchTab('encode')">
+                <svg viewBox="0 0 24 24" class="tab-icon"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM9 6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6zm9 14H6V10h12v10zm-6-3c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2z"/></svg>
+                <span>Veri Gizle (Encode)</span>
+            </button>
+            <button class="tab-btn" id="tab-decode" onclick="switchTab('decode')">
+                <svg viewBox="0 0 24 24" class="tab-icon"><path d="M12 17c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm6-9h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6-5c1.66 0 3 1.34 3 3v2H9V6c0-1.66 1.34-3 3-3zm6 17H6V10h12v10z"/></svg>
+                <span>Veri Çöz (Decode)</span>
+            </button>
+            <button class="tab-btn" id="tab-analyze" onclick="switchTab('analyze')">
+                <svg viewBox="0 0 24 24" class="tab-icon"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-4 6h4v2h-4V9zm0 4h4v2h-4v-2zm-6 2H5v-2h4v2zm0-4H5V9h4v2zm-2 8H5v-2h2v2zm6-4v4h-2v-4h2zm4 4h-2v-2h2v2zm-6-10V5h2v4h-2zm-4-4h2v2H7V5zm8 4h-2V7h2v2z"/></svg>
+                <span>Steganaliz (Analyze)</span>
+            </button>
+            <button class="tab-btn" id="tab-learn" onclick="switchTab('learn')">
+                <svg viewBox="0 0 24 24" class="tab-icon"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4 10-10S17.52 2 12 2zm1 16h-2v-2h2v2zm0-4h-2V7h2v7z"/></svg>
+                <span>Nasıl Çalışır?</span>
+            </button>
+        </nav>
+
+        <!-- Main Workspace Area -->
+        <main class="workspace-area">
+
+            <!-- ENCODE SECTION -->
+            <section id="section-encode" class="tab-content active">
+                <div class="grid-2col">
+                    <!-- Left: Upload & Config -->
+                    <div class="card panel-config">
+                        <div class="card-header">
+                            <h2>1. Taşıyıcı Görsel & Ayarlar</h2>
+                        </div>
+                        
+                        <!-- Drag & Drop Zone -->
+                        <div class="upload-zone" id="drop-encode">
+                            <input type="file" id="file-encode" accept="image/png, image/jpeg" style="display: none;">
+                            <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+                            </svg>
+                            <p class="upload-title">Resminizi Buraya Sürükleyin veya Seçin</p>
+                            <p class="upload-desc">PNG veya JPG formatında taşıyıcı görsel</p>
+                            <div class="file-info" id="info-encode"></div>
+                        </div>
+
+                        <!-- Config Fields -->
+                        <div class="input-group">
+                            <label for="msg-encode">Gizlenecek Gizli Mesaj</label>
+                            <textarea id="msg-encode" placeholder="Buraya gizlemek istediğiniz mesajı yazın..." disabled></textarea>
+                        </div>
+
+                        <div class="input-group row-fields">
+                            <div class="field-item">
+                                <label for="pass-encode">Parola (İsteğe Bağlı - Şifreleme İçin)</label>
+                                <div class="password-wrapper">
+                                    <input type="password" id="pass-encode" placeholder="Parola girin..." disabled>
+                                    <button class="btn-toggle-pass" type="button" onclick="togglePasswordVisibility('pass-encode')">Göster</button>
+                                </div>
+                            </div>
+                            <div class="field-item">
+                                <label for="channel-encode">Kanal Seçimi</label>
+                                <select id="channel-encode" disabled>
+                                    <option value="rgb">Tüm Kanallar (R, G, B)</option>
+                                    <option value="r">Sadece Kırmızı (R)</option>
+                                    <option value="g">Sadece Yeşil (G)</option>
+                                    <option value="b">Sadece Mavi (B)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="capacity-bar-wrapper">
+                            <div class="capacity-bar" id="capacity-bar-fill"></div>
+                        </div>
+                        <button id="btn-encode-action" class="btn btn-primary btn-block" disabled onclick="handleEncode()">
+                            <svg viewBox="0 0 24 24" class="btn-icon"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM9 6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6zm9 14H6V10h12v10zm-6-3c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2z" fill="currentColor"/></svg>
+                            Mesajı Görsele Gizle
+                        </button>
+                    </div>
+
+                    <!-- Right: Previews & Download -->
+                    <div class="card panel-preview">
+                        <div class="card-header">
+                            <h2>2. Önizleme ve İndirme</h2>
+                        </div>
+                        <div class="preview-container">
+                            <div class="preview-box">
+                                <h3>Orijinal Görsel</h3>
+                                <div class="canvas-wrapper">
+                                    <canvas id="canvas-original-encode"></canvas>
+                                    <div class="canvas-placeholder" id="placeholder-orig-encode">Görsel Yüklenmedi</div>
+                                </div>
+                            </div>
+                            <div class="preview-box">
+                                <h3>Taşıyıcı (Stego) Görsel</h3>
+                                <div class="canvas-wrapper">
+                                    <canvas id="canvas-stego-encode"></canvas>
+                                    <div class="canvas-placeholder" id="placeholder-stego-encode">Henüz İşlenmedi</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="encode-stats-bar" id="encode-stats" style="display: none;">
+                            <div class="stat-bubble">
+                                <span class="bubble-title">Gereken Kapasite:</span>
+                                <span id="stat-req-bits" class="bubble-value">0 bit</span>
+                            </div>
+                            <div class="stat-bubble">
+                                <span class="bubble-title">Maks. Kapasite:</span>
+                                <span id="stat-max-bits" class="bubble-value">0 bit</span>
+                            </div>
+                            <div class="stat-bubble">
+                                <span class="bubble-title">Doluluk Oranı:</span>
+                                <span id="stat-percent" class="bubble-value">0%</span>
+                            </div>
+                        </div>
+
+                        <button id="btn-download-stego" class="btn btn-success btn-block" style="display: none;" onclick="downloadStegoImage()">
+                            <svg viewBox="0 0 24 24" class="btn-icon"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" fill="currentColor"/></svg>
+                            Stego Görseli İndir (.PNG)
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- DECODE SECTION -->
+            <section id="section-decode" class="tab-content">
+                <div class="grid-2col">
+                    <!-- Left: Upload & Passcode -->
+                    <div class="card panel-config">
+                        <div class="card-header">
+                            <h2>1. Stego Görsel & Parola</h2>
+                        </div>
+
+                        <!-- Drag & Drop Zone -->
+                        <div class="upload-zone" id="drop-decode">
+                            <input type="file" id="file-decode" accept="image/png" style="display: none;">
+                            <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+                            </svg>
+                            <p class="upload-title">Stego Resmi Buraya Sürükleyin veya Seçin</p>
+                            <p class="upload-desc">Sadece kayıpsız .PNG dosyaları desteklenir</p>
+                            <div class="file-info" id="info-decode"></div>
+                        </div>
+
+                        <div class="input-group">
+                            <label for="pass-decode">Çözme Parolası (Eğer şifrelenmişse)</label>
+                            <div class="password-wrapper">
+                                <input type="password" id="pass-decode" placeholder="Parolayı girin..." disabled>
+                                <button class="btn-toggle-pass" type="button" onclick="togglePasswordVisibility('pass-decode')">Göster</button>
+                            </div>
+                        </div>
+
+                        <button id="btn-decode-action" class="btn btn-primary btn-block" disabled onclick="handleDecode()">
+                            <svg viewBox="0 0 24 24" class="btn-icon"><path d="M12 17c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm6-9h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM9 6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6z" fill="currentColor"/></svg>
+                            Gizli Mesajı Çöz ve Göster
+                        </button>
+                    </div>
+
+                    <!-- Right: Decoded Result -->
+                    <div class="card panel-result">
+                        <div class="card-header">
+                            <h2>2. Çözülen Gizli Mesaj</h2>
+                        </div>
+                        
+                        <div class="canvas-wrapper decode-canvas-wrapper" style="max-height: 200px; margin-bottom: 1.5rem;">
+                            <canvas id="canvas-stego-decode"></canvas>
+                            <div class="canvas-placeholder" id="placeholder-stego-decode">Görsel Yüklenmedi</div>
+                        </div>
+
+                        <div class="input-group" style="flex: 1; display: flex; flex-direction: column;">
+                            <label for="msg-decode">Gizli Mesaj</label>
+                            <textarea id="msg-decode" class="result-textarea" placeholder="Gizli mesaj çözüldükten sonra burada görünecektir..." readonly></textarea>
+                        </div>
+
+                        <div class="decode-meta" id="decode-meta" style="display: none;">
+                            <div class="meta-item">
+                                <span class="meta-label">Kanal</span>
+                                <span class="meta-value" id="meta-channel">—</span>
+                            </div>
+                            <div class="meta-item">
+                                <span class="meta-label">Şifreleme</span>
+                                <span class="meta-value" id="meta-encrypt">—</span>
+                            </div>
+                            <div class="meta-item">
+                                <span class="meta-label">Boyut</span>
+                                <span class="meta-value" id="meta-length">—</span>
+                            </div>
+                        </div>
+                        <button id="btn-copy-msg" class="btn btn-success btn-block" style="display: none;" onclick="copyDecodedMessage()">
+                            <svg viewBox="0 0 24 24" class="btn-icon"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" fill="currentColor"/></svg>
+                            Mesajı Panoya Kopyala
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ANALYZE SECTION -->
+            <section id="section-analyze" class="tab-content">
+                <div class="grid-analysis">
+                    <!-- Column 1: Upload & Stats -->
+                    <div class="card panel-analysis-left">
+                        <div class="card-header">
+                            <h2>Görsel Yükle & İstatistikler</h2>
+                        </div>
+
+                        <div class="upload-zone" id="drop-analyze">
+                            <input type="file" id="file-analyze" accept="image/png, image/jpeg" style="display: none;">
+                            <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+                            </svg>
+                            <p class="upload-title">Analiz Edilecek Resmi Seçin</p>
+                            <div class="file-info" id="info-analyze"></div>
+                        </div>
+
+                        <!-- Signature Detection -->
+                        <div class="signature-box sig-idle" id="signature-result">
+                            <span class="sig-icon">◎</span>
+                            <div class="sig-body">
+                                <strong>İmza Taraması</strong>
+                                <span>Görsel yüklendiğinde StegoShield protokol imzası aranacak.</span>
+                            </div>
+                        </div>
+
+                        <!-- Statistical Result Card -->
+                        <div class="analysis-results-box" id="analysis-results" style="display: none;">
+                            <div class="gauge-container">
+                                <svg class="gauge" viewBox="0 0 100 100">
+                                    <circle class="gauge-bg" cx="50" cy="50" r="40"></circle>
+                                    <circle class="gauge-fill" id="gauge-fill-val" cx="50" cy="50" r="40" stroke-dasharray="251.2" stroke-dashoffset="251.2"></circle>
+                                </svg>
+                                <div class="gauge-text">
+                                    <span id="gauge-percentage">0%</span>
+                                    <span class="gauge-label">Gizleme Olasılığı</span>
+                                </div>
+                            </div>
+                            
+                            <div class="analysis-summary-card" id="analysis-status-card">
+                                <h3 id="analysis-status-title">Sonuç Bekleniyor</h3>
+                                <p id="analysis-status-desc">Lütfen analiz etmek için bir resim yükleyin.</p>
+                            </div>
+
+                            <div class="metric-details">
+                                <div class="metric-row">
+                                    <span>Chi-Square P-Değeri:</span>
+                                    <strong id="metric-pvalue">0.0000</strong>
+                                </div>
+                                <div class="metric-row">
+                                    <span>Gözlenen LSB Entropisi:</span>
+                                    <strong id="metric-entropy">0.0000</strong>
+                                </div>
+                                <div class="metric-row">
+                                    <span>Ortalama LSB Değeri (R/G/B):</span>
+                                    <strong id="metric-lsb-mean">0.5000</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Column 2: Visual Steganalysis -->
+                    <div class="card panel-analysis-right">
+                        <div class="card-header">
+                            <h2>Görsel Steganaliz (LSB Haritası)</h2>
+                        </div>
+                        
+                        <div class="analysis-visualizer">
+                            <div class="canvas-wrapper visual-canvas-wrapper">
+                                <canvas id="canvas-analysis-lsb"></canvas>
+                                <div class="canvas-placeholder" id="placeholder-analysis-lsb">Görsel Analiz Edilmedi</div>
+                            </div>
+                        </div>
+
+                        <div class="analysis-controls" id="analysis-controls-box" style="display: none;">
+                            <div class="control-row">
+                                <label for="analysis-channel">Gösterilecek LSB Kanalı:</label>
+                                <select id="analysis-channel" onchange="runAnalysis()">
+                                    <option value="rgb">Birleşik RGB LSB Haritası</option>
+                                    <option value="r">Sadece Kırmızı LSB</option>
+                                    <option value="g">Sadece Yeşil LSB</option>
+                                    <option value="b">Sadece Mavi LSB</option>
+                                </select>
+                            </div>
+                            <div class="control-row">
+                                <label for="analysis-contrast">Kontrast Güçlendirme:</label>
+                                <input type="range" id="analysis-contrast" min="1" max="10" value="10" oninput="runAnalysis()">
+                            </div>
+                            <div class="alert-info-box">
+                                <p><strong>💡 İpucu:</strong> Eğer görselde gizli bir mesaj varsa, LSB haritasında belirli sınırlı alanlarda veya resmin tamamında yoğun bir <strong>gürültü/karıncalanma bloğu</strong> görürsünüz. Doğal ve temiz görsellerde ise LSB haritası daha yumuşak, resmin ana konturlarını takip eden desenler oluşturur.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Column 3: Histograms -->
+                    <div class="card panel-analysis-bottom">
+                        <div class="card-header">
+                            <h2>Renk Dağılım Histogram Analizi</h2>
+                        </div>
+                        <div class="histogram-container">
+                            <div class="histogram-box">
+                                <h3>Renk Frekans Histogramı (Kırmızı, Yeşil, Mavi Dağılımı)</h3>
+                                <canvas id="canvas-histogram"></canvas>
+                                <div class="canvas-placeholder" id="placeholder-histogram">Görsel Yüklenmedi</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- LEARN SECTION -->
+            <section id="section-learn" class="tab-content">
+                <div class="learn-container">
+                    <div class="learn-header">
+                        <h2>Steganografi ve Steganaliz Bilgi Bankası</h2>
+                        <p>StegoShield platformunda kullanılan teknolojiler ve teorik siber güvenlik altyapısı.</p>
+                    </div>
+
+                    <div class="learn-grid">
+                        <div class="learn-card">
+                            <div class="learn-card-icon">🔑</div>
+                            <h3>En Önemsiz Bit (LSB) Mantığı</h3>
+                            <p>Bir resim piksellerden oluşur ve her pikselin rengi 8 bitlik (0-255 arası) sayısal değerlerle saklanır. LSB (Least Significant Bit), bu 8 bitlik sayının en sağındaki, yani basamak değeri en düşük olan bitidir. Bu biti 0'dan 1'e veya 1'den 0'a değiştirmek pikselin rengini 256'da 1 oranında değiştirir. Bu küçük değişim insan gözü tarafından algılanamaz, bu yüzden bu katmana gizli veri saklanır.</p>
+                        </div>
+
+                        <div class="learn-card">
+                            <div class="learn-card-icon">🔒</div>
+                            <h3>Neden Parolalı Şifreleme Kullanıyoruz?</h3>
+                            <p>Sadece LSB bitlerine veri yazmak güvenli değildir. Kötü amaçlı bir aktör, resmin LSB bitlerini okuduğunda gizli mesajı doğrudan elde edebilir. Bu güvenlik açığını kapatmak için mesajı resme gömmeden önce bir <strong>parola (key)</strong> ile şifreleriz. Mesaj şifrelendiğinde piksellere yazılan veri tamamen rastgele bir bit dizisi haline gelir. Doğru parola girilmeden sadece anlamsız gürültü elde edilir.</p>
+                        </div>
+
+                        <div class="learn-card">
+                            <div class="learn-card-icon">📊</div>
+                            <h3>Chi-Square (Ki-Kare) Testi Nedir?</h3>
+                            <p>Normal görsellerde yan yana duran renklerin sıklıkları (örneğin 128 ve 129 sayı değerleri) yumuşak geçişler nedeniyle birbirine yakındır. Ancak görselin içine rastgele şifrelenmiş veri yazıldığında, LSB bitleri yapay bir şekilde dağıtılır ve bu renk çiftlerinin frekansları birbirine eşitlenir. Chi-Square testi, resimdeki piksellerin frekans çiftlerini analiz ederek LSB dağılımındaki bu yapay dengelenmeyi ölçer ve gizli veri saklanma olasılığını matematiksel olarak hesaplar.</p>
+                        </div>
+
+                        <div class="learn-card">
+                            <div class="learn-card-icon">👁️</div>
+                            <h3>Görsel Steganaliz (Visual Attack)</h3>
+                            <p>Görsel stegananaliz, bir resimdeki piksellerin LSB dışındaki tüm bitlerini (ilk 7 biti) sıfırlayarak sadece LSB katmanını görünür hale getirme işlemidir. Eğer resme bir veri gizlenmişse, LSB haritasında verinin yazıldığı piksellerde yoğun, dikdörtgen şeklinde karıncalı bir gürültü bloğu belirir. Eğer resim temizse, LSB haritası resmin kendi şeklini yansıtan silüetsi ve homojen bir dağılım sergiler.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+
+        <!-- Footer -->
+        <footer>
+            <p>© 2026 StegoShield Security Suite. Siber Güvenlik Dönem Projesi.</p>
+        </footer>
+
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- Application Script -->
+    <script src="app.js"></script>
+</body>
+</html>
