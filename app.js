@@ -1,5 +1,7 @@
 /* ==========================================================================
-   StegoShield Core Logic - Steganography & Steganalysis Suite
+   StegoShield Core Logic - Steganography & Steganalysis Suite (v2)
+   Güvenli sürüm: AES-256-GCM + PBKDF2, dağıtık (PRNG) gömme, bütünlük kontrolü,
+   blok bazlı chi-square ve Web Worker tabanlı steganaliz.
    ========================================================================== */
 
 // Global state
@@ -12,10 +14,26 @@ let analyzedImageData = null;
 let originalFileName = '';
 
 // Protocol constants
-const MAGIC_BYTES = [83, 84, 71]; // ASCII: "STG"
+const MAGIC_BYTES   = [83, 84, 71]; // ASCII: "STG"
 const CHANNEL_CODES = { rgb: 0, r: 1, g: 2, b: 3 };
 const CHANNEL_NAMES = { rgb: 'Tüm Kanallar (RGB)', r: 'Kırmızı (R)', g: 'Yeşil (G)', b: 'Mavi (B)' };
 const DEPTH_NAMES   = { 1: 'LSB-1 (Standart)', 2: 'LSB-2 (2× kapasite)', 3: 'LSB-3 (3× kapasite)' };
+
+// Yeni paket başlığı (toplam 40 bayt / 320 bit):
+//   [0..2]   Magic "STG"
+//   [3]      Flags:  bit0=encrypt, bits1-2=channel(0-3), bits3-4=depth-1(0-2)
+//   [4..19]  Salt (16B, PBKDF2 için — şifresizse sıfır)
+//   [20..31] IV   (12B, AES-GCM için — şifresizse sıfır)
+//   [32..35] Checksum (SHA-256(plaintext)[0:4] — bütünlük kontrolü)
+//   [36..39] Payload uzunluğu (big-endian)
+//   [40..]   Payload (şifreliyse AES-GCM ciphertext+tag, değilse UTF-8 düz metin)
+const HEADER_BYTES = 40;
+const HEADER_BITS  = HEADER_BYTES * 8;
+
+// Dağıtık gömme için sabit PRNG tohumu. Gizlilik AES katmanında sağlanır;
+// yayılım, kör (blind) steganalize karşı istatistiksel izi tüm görsele dağıtmak içindir.
+const SPREAD_SEED  = 0x53544730; // "STG0"
+const PBKDF2_ITERS = 100000;
 
 /* ==========================================================================
    Toast Notification System
@@ -66,8 +84,8 @@ function switchTab(tabName) {
 function togglePasswordVisibility(inputId) {
     const input = document.getElementById(inputId);
     const button = input.nextElementSibling;
-    if (input.type === 'password') { input.type = 'text'; button.textContent = 'Gizle'; }
-    else { input.type = 'password'; button.textContent = 'Göster'; }
+    if (input.type === 'password') { input.type = 'text';  button.textContent = 'Gizle'; }
+    else                           { input.type = 'password'; button.textContent = 'Göster'; }
 }
 
 function setButtonLoading(btn, isLoading, loadingText = 'İşleniyor...') {
@@ -82,48 +100,57 @@ function setButtonLoading(btn, isLoading, loadingText = 'İşleniyor...') {
 }
 
 /* ==========================================================================
-   Cryptographic Module: RC4 Stream Cipher
+   Cryptographic Module — AES-256-GCM + PBKDF2 (Web Crypto API)
    ========================================================================== */
 
-function rc4(key, bytes) {
-    const s = Array.from({ length: 256 }, (_, i) => i);
-    let j = 0, x;
-    for (let i = 0; i < 256; i++) {
-        j = (j + s[i] + key.charCodeAt(i % key.length)) % 256;
-        x = s[i]; s[i] = s[j]; s[j] = x;
-    }
-    let i = 0; j = 0;
-    const out = new Uint8Array(bytes.length);
-    for (let y = 0; y < bytes.length; y++) {
-        i = (i + 1) % 256; j = (j + s[i]) % 256;
-        x = s[i]; s[i] = s[j]; s[j] = x;
-        out[y] = bytes[y] ^ s[(s[i] + s[j]) % 256];
-    }
-    return out;
+async function deriveKey(password, salt) {
+    const baseKey = await crypto.subtle.importKey(
+        'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey(
+        { name: 'PBKDF2', salt, iterations: PBKDF2_ITERS, hash: 'SHA-256' },
+        baseKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+
+async function sha256(bytes) {
+    return new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+}
+
+function bytesEqual(a, b, len) {
+    for (let i = 0; i < len; i++) if (a[i] !== b[i]) return false;
+    return true;
 }
 
 /* ==========================================================================
-   Steganography Protocol
-   FLAGS byte: bit0=encrypt, bits2-1=channel, bits4-3=depthCode (depth-1)
+   Steganography Protocol — packet build / parse
    ========================================================================== */
 
-function packPayload(messageText, passcode, channel, depth = 1) {
-    const encoder = new TextEncoder();
-    let payloadBytes = encoder.encode(messageText);
-    const encryptFlag  = (passcode && passcode.trim() !== '') ? 1 : 0;
-    if (encryptFlag) payloadBytes = rc4(passcode, payloadBytes);
+async function packPayload(messageText, passcode, channel, depth) {
+    const plain      = new TextEncoder().encode(messageText);
+    const checksum   = (await sha256(plain)).slice(0, 4);
+    const encryptFlag = (passcode && passcode.trim() !== '') ? 1 : 0;
+
+    let salt = new Uint8Array(16), iv = new Uint8Array(12), payload = plain;
+    if (encryptFlag) {
+        salt = crypto.getRandomValues(new Uint8Array(16));
+        iv   = crypto.getRandomValues(new Uint8Array(12));
+        const key = await deriveKey(passcode, salt);
+        const ct  = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plain);
+        payload   = new Uint8Array(ct); // ciphertext + 16B GCM tag
+    }
 
     const channelCode = CHANNEL_CODES[channel] ?? 0;
-    const depthCode   = Math.max(0, depth - 1) & 3;
-    const flags = (depthCode << 3) | (channelCode << 1) | encryptFlag;
+    const flags = (encryptFlag) | (channelCode << 1) | ((depth - 1) << 3);
 
-    const packet = new Uint8Array(3 + 1 + 4 + payloadBytes.length);
+    const packet = new Uint8Array(HEADER_BYTES + payload.length);
     packet[0] = MAGIC_BYTES[0]; packet[1] = MAGIC_BYTES[1]; packet[2] = MAGIC_BYTES[2];
     packet[3] = flags;
-    const len = payloadBytes.length;
-    packet[4] = (len >>> 24) & 0xFF; packet[5] = (len >>> 16) & 0xFF;
-    packet[6] = (len >>> 8) & 0xFF;  packet[7] = len & 0xFF;
-    packet.set(payloadBytes, 8);
+    packet.set(salt, 4);
+    packet.set(iv, 20);
+    packet.set(checksum, 32);
+    const len = payload.length;
+    packet[36] = (len >>> 24) & 0xFF; packet[37] = (len >>> 16) & 0xFF;
+    packet[38] = (len >>> 8)  & 0xFF; packet[39] =  len         & 0xFF;
+    packet.set(payload, HEADER_BYTES);
     return packet;
 }
 
@@ -144,48 +171,75 @@ function bitsToBytes(bitArray) {
     return bytes;
 }
 
-/* Multi-depth bit I/O — depth 1/2/3 LSBs per channel slot */
-function writeBitsToPixels(pixels, bitStream, channel, depth) {
-    const bLen = bitStream.length;
-    const mask = ~((1 << depth) - 1) & 0xFF;
-    let bp = 0;
+/* ==========================================================================
+   Distributed Embedding — seeded PRNG spreads bits across the whole image
+   ========================================================================== */
+
+function mulberry32(a) {
+    return function () {
+        a |= 0; a = (a + 0x6D2B79F5) | 0;
+        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+function totalSlots(channel, depth, pixelCount) {
+    return pixelCount * (channel === 'rgb' ? 3 : 1) * depth;
+}
+
+/* Sparse partial Fisher-Yates: deterministic first `count` slots of a seeded
+   shuffle of [0..total-1]. O(count) memory; prefix-consistent for any count. */
+function spreadOrder(total, count, seed) {
+    const rng = mulberry32(seed);
+    const map = new Map();
+    const out = new Int32Array(count);
+    for (let i = 0; i < count; i++) {
+        const j  = i + Math.floor(rng() * (total - i)); // i..total-1
+        const vi = map.has(i) ? map.get(i) : i;
+        const vj = map.has(j) ? map.get(j) : j;
+        out[i] = vj;
+        map.set(j, vi);
+    }
+    return out;
+}
+
+/* Map a slot index back to (byteOffset, bitPosition). */
+function slotToByteBit(slot, channel, depth) {
+    const dpos = slot % depth;
+    let rest = (slot - dpos) / depth;
+    let off;
     if (channel === 'rgb') {
-        for (let i = 0; i < pixels.length && bp < bLen; i += 4)
-            for (let c = 0; c < 3 && bp < bLen; c++) {
-                let v = pixels[i + c] & mask;
-                for (let d = depth - 1; d >= 0 && bp < bLen; d--) v |= bitStream[bp++] << d;
-                pixels[i + c] = v;
-            }
+        const c = rest % 3;
+        const p = (rest - c) / 3;
+        off = p * 4 + c;
     } else {
-        const off = channel === 'g' ? 1 : channel === 'b' ? 2 : 0;
-        for (let i = 0; i < pixels.length && bp < bLen; i += 4) {
-            let v = pixels[i + off] & mask;
-            for (let d = depth - 1; d >= 0 && bp < bLen; d--) v |= bitStream[bp++] << d;
-            pixels[i + off] = v;
-        }
+        off = rest * 4 + (channel === 'g' ? 1 : channel === 'b' ? 2 : 0);
+    }
+    return [off, depth - 1 - dpos];
+}
+
+function writeBitsToPixels(pixels, bitStream, channel, depth) {
+    const n     = pixels.length / 4;
+    const total = totalSlots(channel, depth, n);
+    const order = spreadOrder(total, bitStream.length, SPREAD_SEED);
+    for (let k = 0; k < bitStream.length; k++) {
+        const [off, bp] = slotToByteBit(order[k], channel, depth);
+        pixels[off] = (pixels[off] & ~(1 << bp)) | (bitStream[k] << bp);
     }
 }
 
 function readBitsFromPixels(pixels, bitCount, channel, depth) {
-    const bits = new Uint8Array(bitCount);
-    let bp = 0;
-    if (channel === 'rgb') {
-        for (let i = 0; i < pixels.length && bp < bitCount; i += 4)
-            for (let c = 0; c < 3 && bp < bitCount; c++)
-                for (let d = depth - 1; d >= 0 && bp < bitCount; d--)
-                    bits[bp++] = (pixels[i + c] >> d) & 1;
-    } else {
-        const off = channel === 'g' ? 1 : channel === 'b' ? 2 : 0;
-        for (let i = 0; i < pixels.length && bp < bitCount; i += 4)
-            for (let d = depth - 1; d >= 0 && bp < bitCount; d--)
-                bits[bp++] = (pixels[i + off] >> d) & 1;
+    const n     = pixels.length / 4;
+    const total = totalSlots(channel, depth, n);
+    if (total < bitCount) return null;
+    const order = spreadOrder(total, bitCount, SPREAD_SEED);
+    const bits  = new Uint8Array(bitCount);
+    for (let k = 0; k < bitCount; k++) {
+        const [off, bp] = slotToByteBit(order[k], channel, depth);
+        bits[k] = (pixels[off] >> bp) & 1;
     }
     return bits;
-}
-
-// Backward-compat wrapper (depth=1)
-function readBitsInChannel(pixels, bitCount, channel) {
-    return readBitsFromPixels(pixels, bitCount, channel, 1);
 }
 
 /* ==========================================================================
@@ -196,7 +250,7 @@ function setupDragDrop(zoneId, inputId, infoId, callback) {
     const zone  = document.getElementById(zoneId);
     const input = document.getElementById(inputId);
     zone.addEventListener('click', () => input.click());
-    zone.addEventListener('dragover',  e => { e.preventDefault(); zone.classList.add('dragover'); });
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
     zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
     zone.addEventListener('drop', e => {
         e.preventDefault(); zone.classList.remove('dragover');
@@ -219,7 +273,7 @@ function handleFileSelect(file, infoId, callback) {
 document.addEventListener('DOMContentLoaded', () => {
 
     // ── Encode Tab ──────────────────────────────────────────────────────────
-    setupDragDrop('drop-encode', 'file-encode', 'info-encode', img => {
+    setupDragDrop('drop-encode', 'file-encode', 'info-encode', (img) => {
         originalImage = img;
         const canvas = document.getElementById('canvas-original-encode');
         const ctx = canvas.getContext('2d');
@@ -228,25 +282,22 @@ document.addEventListener('DOMContentLoaded', () => {
         originalImageData = ctx.getImageData(0, 0, img.width, img.height);
 
         document.getElementById('placeholder-orig-encode').style.display = 'none';
-        ['msg-encode','pass-encode','channel-encode','depth-encode','btn-encode-action'].forEach(id => {
-            document.getElementById(id).disabled = false;
+        ['msg-encode', 'pass-encode', 'channel-encode', 'depth-encode', 'btn-encode-action'].forEach(id => {
+            const el = document.getElementById(id); if (el) el.disabled = false;
         });
 
         const cs = document.getElementById('canvas-stego-encode');
         cs.getContext('2d').clearRect(0, 0, cs.width, cs.height);
         document.getElementById('placeholder-stego-encode').style.display = 'flex';
         document.getElementById('btn-download-stego').style.display = 'none';
-        document.getElementById('btn-compare').style.display = 'none';
         document.getElementById('encode-stats').style.display = 'none';
-        document.getElementById('comparison-section').style.display = 'none';
-        document.getElementById('histogram-compare-section').style.display = 'none';
         updateCapacityStats();
 
         showToast('info', 'Görsel Yüklendi', `${img.width}×${img.height} piksel (${(img.width * img.height * 3 / 8 / 1024).toFixed(0)} KB maks. kapasite).`);
     });
 
     // ── Decode Tab ──────────────────────────────────────────────────────────
-    setupDragDrop('drop-decode', 'file-decode', 'info-decode', img => {
+    setupDragDrop('drop-decode', 'file-decode', 'info-decode', (img) => {
         stegoImage = img;
         const canvas = document.getElementById('canvas-stego-decode');
         const ctx = canvas.getContext('2d');
@@ -265,7 +316,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ── Analyze Tab ─────────────────────────────────────────────────────────
-    setupDragDrop('drop-analyze', 'file-analyze', 'info-analyze', img => {
+    setupDragDrop('drop-analyze', 'file-analyze', 'info-analyze', (img) => {
         analyzedImage = img;
         const offscreen = document.createElement('canvas');
         offscreen.width = img.width; offscreen.height = img.height;
@@ -280,14 +331,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         runSignatureDetection();
         runAnalysis();
-        runRSAnalysis();
+        runHeavyAnalysis();        // RS + blok chi-square (Web Worker)
         renderHistogram(analyzedImageData);
         showToast('info', 'Analiz Başlatıldı', `${img.width}×${img.height} piksel taranıyor.`);
     });
 
     // Live capacity updates
-    document.getElementById('msg-encode').addEventListener('input', updateCapacityStats);
-    document.getElementById('pass-encode').addEventListener('input', updateCapacityStats);
+    ['msg-encode', 'pass-encode'].forEach(id =>
+        document.getElementById(id).addEventListener('input', updateCapacityStats));
     document.getElementById('channel-encode').addEventListener('change', updateCapacityStats);
     document.getElementById('depth-encode').addEventListener('change', updateCapacityStats);
 });
@@ -299,11 +350,16 @@ document.addEventListener('DOMContentLoaded', () => {
 function updateCapacityStats() {
     if (!originalImage) return;
     const message    = document.getElementById('msg-encode').value;
+    const passcode   = document.getElementById('pass-encode').value;
     const channel    = document.getElementById('channel-encode').value;
     const depth      = parseInt(document.getElementById('depth-encode').value) || 1;
     const pixelCount = originalImage.width * originalImage.height;
     const maxBits    = pixelCount * (channel === 'rgb' ? 3 : 1) * depth;
-    const reqBits    = 64 + new TextEncoder().encode(message).length * 8;
+
+    const msgBytes   = new TextEncoder().encode(message).length;
+    const encrypted  = passcode && passcode.trim() !== '';
+    const payloadLen = msgBytes + (encrypted ? 16 : 0); // GCM tag
+    const reqBits    = (HEADER_BYTES + payloadLen) * 8;
     const percent    = Math.min(100, (reqBits / maxBits) * 100);
 
     document.getElementById('encode-stats').style.display = 'flex';
@@ -328,10 +384,10 @@ function updateCapacityStats() {
 }
 
 /* ==========================================================================
-   Encoding
+   Encoding (async — AES-GCM + spread embedding)
    ========================================================================== */
 
-function handleEncode() {
+async function handleEncode() {
     if (!originalImage || !originalImageData) {
         showToast('error', 'Görsel Eksik', 'Lütfen önce bir taşıyıcı görsel yükleyin.'); return;
     }
@@ -346,40 +402,39 @@ function handleEncode() {
 
     const btn = document.getElementById('btn-encode-action');
     setButtonLoading(btn, true, 'Gizleniyor...');
+    await new Promise(r => setTimeout(r, 30)); // spinner paint
 
-    setTimeout(() => {
-        try {
-            const packet    = packPayload(message, passcode, channel, depth);
-            const bitStream = bytesToBits(packet);
-            const { width, height } = originalImage;
+    try {
+        const packet    = await packPayload(message, passcode, channel, depth);
+        const bitStream = bytesToBits(packet);
+        const { width, height } = originalImage;
 
-            const canvasStego = document.getElementById('canvas-stego-encode');
-            canvasStego.width = width; canvasStego.height = height;
-            const ctxStego = canvasStego.getContext('2d');
+        const canvasStego = document.getElementById('canvas-stego-encode');
+        canvasStego.width = width; canvasStego.height = height;
+        const ctxStego = canvasStego.getContext('2d');
 
-            const imgData = ctxStego.createImageData(width, height);
-            imgData.data.set(originalImageData.data);
-            writeBitsToPixels(imgData.data, bitStream, channel, depth);
-            ctxStego.putImageData(imgData, 0, 0);
+        const imgData = ctxStego.createImageData(width, height);
+        imgData.data.set(originalImageData.data);
+        writeBitsToPixels(imgData.data, bitStream, channel, depth);
+        ctxStego.putImageData(imgData, 0, 0);
 
-            document.getElementById('placeholder-stego-encode').style.display = 'none';
-            document.getElementById('btn-download-stego').style.display = 'flex';
-            document.getElementById('btn-compare').style.display = 'flex';
+        document.getElementById('placeholder-stego-encode').style.display = 'none';
+        document.getElementById('btn-download-stego').style.display = 'flex';
+        document.getElementById('btn-compare').style.display = 'flex';
 
-            renderDiffMap(originalImageData.data, imgData.data, width, height);
-            renderComparisonHistogram(originalImageData, imgData);
+        renderDiffMap(originalImageData.data, imgData.data, width, height);
+        renderComparisonHistogram(originalImageData, imgData);
 
-            const encLabel = (passcode && passcode.trim()) ? 'RC4 şifreli' : 'şifresiz';
-            const depthLabel = depth > 1 ? `, LSB-${depth}` : '';
-            showToast('success', 'Gizleme Tamamlandı!',
-                `${message.length} karakter, ${CHANNEL_NAMES[channel]} kanalına ${encLabel}${depthLabel} olarak yazıldı.`);
-        } catch (e) {
-            showToast('error', 'Hata Oluştu', e.message);
-        } finally {
-            setButtonLoading(btn, false);
-            updateCapacityStats();
-        }
-    }, 50);
+        const encLabel   = (passcode && passcode.trim()) ? 'AES-256-GCM şifreli' : 'şifresiz';
+        const depthLabel = depth > 1 ? `, LSB-${depth}` : '';
+        showToast('success', 'Gizleme Tamamlandı!',
+            `${message.length} karakter, ${CHANNEL_NAMES[channel]} kanalına dağıtık + ${encLabel}${depthLabel} olarak yazıldı.`);
+    } catch (e) {
+        showToast('error', 'Hata Oluştu', e.message);
+    } finally {
+        setButtonLoading(btn, false);
+        updateCapacityStats();
+    }
 }
 
 function renderDiffMap(origData, stegoData, width, height) {
@@ -387,7 +442,7 @@ function renderDiffMap(origData, stegoData, width, height) {
     const canvas  = document.getElementById('canvas-diff-encode');
     const ctx     = canvas.getContext('2d');
 
-    let changedPixels = 0, changedBits = 0, lastChangedIdx = 0;
+    let changedPixels = 0, changedBits = 0;
 
     const offscreen = document.createElement('canvas');
     offscreen.width = width; offscreen.height = height;
@@ -398,31 +453,29 @@ function renderDiffMap(origData, stegoData, width, height) {
         const dR = Math.abs(stegoData[i]   - origData[i]);
         const dG = Math.abs(stegoData[i+1] - origData[i+1]);
         const dB = Math.abs(stegoData[i+2] - origData[i+2]);
-        diff.data[i] = dR * 255; diff.data[i+1] = dG * 255; diff.data[i+2] = dB * 255; diff.data[i+3] = 255;
-        if (dR || dG || dB) { changedPixels++; changedBits += (dR?1:0)+(dG?1:0)+(dB?1:0); lastChangedIdx = i; }
+        // ×255 amplify so single-LSB changes become fully visible
+        diff.data[i]   = dR ? 255 : 0;
+        diff.data[i+1] = dG ? 255 : 0;
+        diff.data[i+2] = dB ? 255 : 0;
+        diff.data[i+3] = 255;
+        if (dR || dG || dB) { changedPixels++; changedBits += (dR?1:0)+(dG?1:0)+(dB?1:0); }
     }
     octx.putImageData(diff, 0, 0);
 
-    const lastPixel = lastChangedIdx / 4;
-    const lastRow   = Math.floor(lastPixel / width);
-    const lastCol   = lastPixel % width;
-    const cropH     = Math.min(height, lastRow + 3);
-    const cropW     = Math.min(width, lastCol > width * 0.5 ? width : lastCol + 64);
-    const displayW  = 600;
-    const scale     = displayW / cropW;
-    const displayH  = Math.round(cropH * scale);
+    // Dağıtık gömmede değişiklikler tüm görsele yayılır → tam kareyi göster.
+    const displayW = Math.min(600, width);
+    const scale    = displayW / width;
+    const displayH = Math.min(320, Math.round(height * scale));
 
-    canvas.width  = displayW;
-    canvas.height = Math.min(displayH, 320);
+    canvas.width = displayW; canvas.height = displayH;
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(offscreen, 0, 0, cropW, cropH, 0, 0, displayW, Math.min(displayH, 320));
+    ctx.drawImage(offscreen, 0, 0, width, height, 0, 0, displayW, displayH);
     ctx.strokeStyle = 'rgba(0,229,255,0.5)'; ctx.lineWidth = 2;
-    ctx.strokeRect(1, 1, displayW - 2, Math.min(displayH, 320) - 2);
+    ctx.strokeRect(1, 1, displayW - 2, displayH - 2);
 
     section.style.display = 'block';
-    const totalPixels  = width * height;
-    const coveragePct  = (changedPixels / totalPixels * 100).toFixed(2);
-    const zoomLabel    = cropW < width ? ` (sol ${cropW}×${cropH} px gösteriliyor)` : '';
+    const totalPixels = width * height;
+    const coveragePct = (changedPixels / totalPixels * 100).toFixed(2);
 
     document.getElementById('diff-stats').innerHTML = `
         <div class="diff-stat"><span>Değiştirilen Piksel</span><strong>${changedPixels.toLocaleString('tr-TR')}</strong></div>
@@ -431,7 +484,7 @@ function renderDiffMap(origData, stegoData, width, height) {
         <div class="diff-stat"><span>Yazılan Bit</span><strong>${changedBits.toLocaleString('tr-TR')}</strong></div>
     `;
     document.querySelector('.diff-desc').textContent =
-        `Mesajın görselde kapladığı alan büyütülerek gösterilir${zoomLabel}. Kırmızı=R, Yeşil=G, Mavi=B kanalı değişti.`;
+        'Değişen pikseller ×255 büyütülmüştür. Dağıtık (PRNG) gömme sayesinde noktalar tek bir blokta değil, tüm görsele homojen yayılır. Kırmızı=R, Yeşil=G, Mavi=B.';
 }
 
 function downloadStegoImage() {
@@ -453,10 +506,7 @@ let comparisonSliderValue = 50;
 
 function toggleComparison() {
     const section = document.getElementById('comparison-section');
-    if (section.style.display !== 'none') {
-        section.style.display = 'none';
-        return;
-    }
+    if (section.style.display !== 'none') { section.style.display = 'none'; return; }
     if (!originalImageData) return;
     section.style.display = 'block';
     updateComparisonSlider(comparisonSliderValue);
@@ -517,28 +567,24 @@ function renderComparisonHistogram(origImgData, stegoImgData) {
     const maxV  = Math.max(...orig.rH, ...orig.gH, ...orig.bH, ...stego.rH, ...stego.gH, ...stego.bH);
     if (maxV === 0) return;
 
-    // Draw original semi-transparent
     drawChannelCurve(ctx, orig.rH,  maxV, W, H, 'rgba(255,23,68,0.15)',  'rgba(255,23,68,0.4)');
     drawChannelCurve(ctx, orig.gH,  maxV, W, H, 'rgba(0,230,118,0.15)',  'rgba(0,230,118,0.4)');
     drawChannelCurve(ctx, orig.bH,  maxV, W, H, 'rgba(0,229,255,0.15)',  'rgba(0,229,255,0.4)');
-    // Draw stego solid
     drawChannelCurve(ctx, stego.rH, maxV, W, H, 'rgba(255,23,68,0.35)',  'rgba(255,23,68,1)');
     drawChannelCurve(ctx, stego.gH, maxV, W, H, 'rgba(0,230,118,0.35)',  'rgba(0,230,118,1)');
     drawChannelCurve(ctx, stego.bH, maxV, W, H, 'rgba(0,229,255,0.35)',  'rgba(0,229,255,1)');
 
-    // Legend
     ctx.font = '10px Outfit'; ctx.textAlign = 'right';
     ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.fillText('Soluk: Orijinal  |  Parlak: Stego', W - 8, H - 6);
     ctx.textAlign = 'left';
-
     section.style.display = 'block';
 }
 
 /* ==========================================================================
-   Decoding — Auto-detects channel and bit-depth from packet header
+   Decoding (async) — auto-detects channel/depth, AES-GCM + integrity check
    ========================================================================== */
 
-function handleDecode() {
+async function handleDecode() {
     if (!stegoImage || !stegoImageData) {
         showToast('error', 'Görsel Eksik', 'Lütfen önce çözümlenecek stego görseli yükleyin.'); return;
     }
@@ -546,67 +592,92 @@ function handleDecode() {
     const pixels   = stegoImageData.data;
     const btn      = document.getElementById('btn-decode-action');
     setButtonLoading(btn, true, 'Çözülüyor...');
+    await new Promise(r => setTimeout(r, 30));
 
-    setTimeout(() => {
-        try {
-            let detectedChannel = null, detectedDepth = null, headerBytes = null;
+    try {
+        let detectedChannel = null, detectedDepth = null, headerBytes = null;
 
-            outer:
-            for (const ch of ['rgb', 'r', 'g', 'b']) {
-                for (const dep of [1, 2, 3]) {
-                    const bytes = bitsToBytes(readBitsFromPixels(pixels, 64, ch, dep));
-                    if (bytes[0] === MAGIC_BYTES[0] && bytes[1] === MAGIC_BYTES[1] && bytes[2] === MAGIC_BYTES[2]) {
-                        detectedChannel = ch; detectedDepth = dep; headerBytes = bytes; break outer;
-                    }
+        outer:
+        for (const ch of ['rgb', 'r', 'g', 'b']) {
+            for (const dep of [1, 2, 3]) {
+                const bits = readBitsFromPixels(pixels, HEADER_BITS, ch, dep);
+                if (!bits) continue;
+                const bytes = bitsToBytes(bits);
+                if (bytes[0] === MAGIC_BYTES[0] && bytes[1] === MAGIC_BYTES[1] && bytes[2] === MAGIC_BYTES[2]) {
+                    detectedChannel = ch; detectedDepth = dep; headerBytes = bytes; break outer;
                 }
             }
+        }
 
-            if (!detectedChannel) {
-                showToast('error', 'Geçersiz Görsel', 'Bu görselde StegoShield protokolü ile gizlenmiş veri bulunamadı. Yalnızca StegoShield ile oluşturulan kayıpsız PNG dosyaları desteklenir.');
-                document.getElementById('msg-decode').value = 'ÇÖZME HATASI: Geçerli StegoShield imzası bulunamadı.';
+        if (!detectedChannel) {
+            showToast('error', 'Geçersiz Görsel', 'Bu görselde StegoShield protokolü ile gizlenmiş veri bulunamadı. Yalnızca StegoShield ile oluşturulan kayıpsız PNG dosyaları desteklenir.');
+            document.getElementById('msg-decode').value = 'ÇÖZME HATASI: Geçerli StegoShield imzası bulunamadı.';
+            return;
+        }
+
+        const flags       = headerBytes[3];
+        const encryptFlag = flags & 1;
+        const salt        = headerBytes.slice(4, 20);
+        const iv          = headerBytes.slice(20, 32);
+        const checksum    = headerBytes.slice(32, 36);
+        const dataLength  = (headerBytes[36] << 24) | (headerBytes[37] << 16) | (headerBytes[38] << 8) | headerBytes[39];
+
+        if (dataLength <= 0 || dataLength > pixels.length) {
+            showToast('error', 'Bozuk Paket', 'Geçersiz paket boyutu.'); return;
+        }
+
+        if (encryptFlag && (!passcode || !passcode.trim())) {
+            showToast('warning', 'Parola Gerekli', 'Bu mesaj AES-256-GCM ile şifrelenmiştir. Parolayı girip tekrar deneyin.');
+            document.getElementById('msg-decode').value = '[ŞİFRELENMİŞ VERİ]: Doğru parolayı girip tekrar deneyin.';
+            return;
+        }
+
+        const fullBits  = readBitsFromPixels(pixels, HEADER_BITS + dataLength * 8, detectedChannel, detectedDepth);
+        const fullBytes = bitsToBytes(fullBits);
+        const payload   = fullBytes.slice(HEADER_BYTES);
+
+        let plain;
+        if (encryptFlag) {
+            try {
+                const key = await deriveKey(passcode, salt);
+                const pt  = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, payload);
+                plain = new Uint8Array(pt);
+            } catch (_) {
+                showToast('error', 'Parola Hatalı', 'AES-GCM doğrulaması başarısız. Parola yanlış veya veri bozulmuş.');
+                document.getElementById('msg-decode').value = 'ÇÖZME HATASI: Parola yanlış veya veri bütünlüğü bozulmuş (GCM tag uyuşmadı).';
                 return;
             }
-
-            const flags       = headerBytes[3];
-            const encryptFlag = flags & 1;
-            const dataLength  = (headerBytes[4] << 24) | (headerBytes[5] << 16) | (headerBytes[6] << 8) | headerBytes[7];
-
-            if (dataLength <= 0 || dataLength > pixels.length) {
-                showToast('error', 'Bozuk Paket', 'Geçersiz paket boyutu.'); return;
-            }
-
-            const fullBytes  = bitsToBytes(readBitsFromPixels(pixels, 64 + dataLength * 8, detectedChannel, detectedDepth));
-            let payloadBytes = fullBytes.slice(8);
-
-            if (encryptFlag) {
-                if (!passcode || !passcode.trim()) {
-                    showToast('warning', 'Parola Gerekli', 'Bu mesaj RC4 ile şifrelenmiştir. Parolayı girip tekrar deneyin.');
-                    document.getElementById('msg-decode').value = '[ŞİFRELENMİŞ VERİ]: Doğru parolayı girip tekrar deneyin.';
-                    return;
-                }
-                payloadBytes = rc4(passcode, payloadBytes);
-            }
-
-            const decodedMessage = new TextDecoder().decode(payloadBytes);
-            document.getElementById('msg-decode').value = decodedMessage;
-            document.getElementById('btn-copy-msg').style.display = 'block';
-
-            const meta = document.getElementById('decode-meta');
-            meta.style.display = 'flex';
-            document.getElementById('meta-channel').textContent = CHANNEL_NAMES[detectedChannel];
-            document.getElementById('meta-encrypt').textContent = encryptFlag ? 'RC4 Şifreli' : 'Şifresiz';
-            document.getElementById('meta-length').textContent  = `${dataLength.toLocaleString('tr-TR')} bayt`;
-            document.getElementById('meta-depth').textContent   = DEPTH_NAMES[detectedDepth];
-
-            showToast('success', 'Çözme Başarılı!',
-                `${dataLength} bayt mesaj çözüldü. Kanal: ${CHANNEL_NAMES[detectedChannel]} | ${DEPTH_NAMES[detectedDepth]}${encryptFlag ? ' | RC4 şifreli' : ''}.`);
-        } catch (e) {
-            showToast('error', 'Çözme Hatası', 'Mesaj çözülemedi. Parola yanlış olabilir veya görsel kayıplı sıkıştırmayla kaydedilmiş olabilir.');
-            document.getElementById('msg-decode').value = 'ÇÖZME HATASI: Karakter kodlaması çözülemedi.';
-        } finally {
-            setButtonLoading(btn, false);
+        } else {
+            plain = payload;
         }
-    }, 50);
+
+        // Bütünlük kontrolü (SHA-256 checksum)
+        const calc = (await sha256(plain)).slice(0, 4);
+        if (!bytesEqual(calc, checksum, 4)) {
+            showToast('error', 'Bütünlük Hatası', 'Checksum uyuşmadı — veri bozulmuş olabilir.');
+            document.getElementById('msg-decode').value = 'ÇÖZME HATASI: Bütünlük doğrulaması (checksum) başarısız.';
+            return;
+        }
+
+        const decodedMessage = new TextDecoder().decode(plain);
+        document.getElementById('msg-decode').value = decodedMessage;
+        document.getElementById('btn-copy-msg').style.display = 'block';
+
+        const meta = document.getElementById('decode-meta');
+        meta.style.display = 'flex';
+        document.getElementById('meta-channel').textContent = CHANNEL_NAMES[detectedChannel];
+        document.getElementById('meta-encrypt').textContent = encryptFlag ? 'AES-256-GCM' : 'Şifresiz';
+        document.getElementById('meta-length').textContent  = `${dataLength.toLocaleString('tr-TR')} bayt`;
+        document.getElementById('meta-depth').textContent   = DEPTH_NAMES[detectedDepth];
+
+        showToast('success', 'Çözme Başarılı!',
+            `Mesaj çözüldü ve bütünlüğü doğrulandı. Kanal: ${CHANNEL_NAMES[detectedChannel]} | ${DEPTH_NAMES[detectedDepth]}${encryptFlag ? ' | AES-256-GCM' : ''}.`);
+    } catch (e) {
+        showToast('error', 'Çözme Hatası', 'Mesaj çözülemedi. Görsel kayıplı sıkıştırmayla kaydedilmiş olabilir.');
+        document.getElementById('msg-decode').value = 'ÇÖZME HATASI: ' + e.message;
+    } finally {
+        setButtonLoading(btn, false);
+    }
 }
 
 async function copyDecodedMessage() {
@@ -618,7 +689,7 @@ async function copyDecodedMessage() {
 }
 
 /* ==========================================================================
-   Signature Detection — StegoShield Protocol (all channels × all depths)
+   Signature Detection — StegoShield Protocol (spread-aware, all combos)
    ========================================================================== */
 
 let signatureDetected = false;
@@ -631,17 +702,19 @@ function runSignatureDetection() {
 
     for (const ch of ['rgb', 'r', 'g', 'b']) {
         for (const dep of [1, 2, 3]) {
-            const bytes = bitsToBytes(readBitsFromPixels(pixels, 64, ch, dep));
+            const bits = readBitsFromPixels(pixels, HEADER_BITS, ch, dep);
+            if (!bits) continue;
+            const bytes = bitsToBytes(bits);
             if (bytes[0] === MAGIC_BYTES[0] && bytes[1] === MAGIC_BYTES[1] && bytes[2] === MAGIC_BYTES[2]) {
                 const encryptFlag = bytes[3] & 1;
-                const dataLength  = (bytes[4] << 24) | (bytes[5] << 16) | (bytes[6] << 8) | bytes[7];
+                const dataLength  = (bytes[36] << 24) | (bytes[37] << 16) | (bytes[38] << 8) | bytes[39];
                 signatureDetected = true;
                 el.className = 'signature-box sig-detected';
                 el.innerHTML = `
                     <span class="sig-icon">⚠</span>
                     <div class="sig-body">
                         <strong>StegoShield İmzası Tespit Edildi!</strong>
-                        <span>Kanal: ${CHANNEL_NAMES[ch]} &nbsp;|&nbsp; ${DEPTH_NAMES[dep]} &nbsp;|&nbsp; ${encryptFlag ? 'RC4 Şifreli' : 'Şifresiz'} &nbsp;|&nbsp; Payload: ${dataLength.toLocaleString('tr-TR')} bayt</span>
+                        <span>Kanal: ${CHANNEL_NAMES[ch]} &nbsp;|&nbsp; ${DEPTH_NAMES[dep]} &nbsp;|&nbsp; ${encryptFlag ? 'AES-256-GCM' : 'Şifresiz'} &nbsp;|&nbsp; Payload: ${dataLength.toLocaleString('tr-TR')} bayt</span>
                     </div>`;
                 updateGaugeFromSignature(true);
                 return;
@@ -674,7 +747,7 @@ function updateGaugeFromSignature(detected) {
 }
 
 /* ==========================================================================
-   Steganalysis Module — Chi-Square + Visual LSB Map
+   Steganalysis (light) — global Chi-Square + visual LSB map / heatmap
    ========================================================================== */
 
 function runAnalysis() {
@@ -711,7 +784,7 @@ function runAnalysis() {
         ctxLsb.putImageData(lsbImgData, 0, 0);
     }
 
-    // Statistical analysis
+    // Global chi-square
     const fR = new Array(256).fill(0), fG = new Array(256).fill(0), fB = new Array(256).fill(0);
     let lsbOnes = 0, total = 0;
     for (let i = 0; i < src.length; i += 4) {
@@ -780,7 +853,6 @@ function renderLSBHeatMap(src, width, height, channel, ctx, blendFactor) {
         else { const o = channel === 'r' ? 0 : channel === 'g' ? 1 : 2; lsb[pi] = src[i + o] & 1; }
     }
 
-    // Integral image (prefix sum)
     const W1  = width + 1;
     const sat = new Float32Array((height + 1) * W1);
     for (let y = 1; y <= height; y++)
@@ -796,14 +868,13 @@ function renderLSBHeatMap(src, width, height, channel, ctx, blendFactor) {
             const x2 = Math.min(width, x+r+1), y2 = Math.min(height, y+r+1);
             const area    = (x2-x1)*(y2-y1);
             const sum     = sat[y2*W1+x2] - sat[y1*W1+x2] - sat[y2*W1+x1] + sat[y1*W1+x1];
-            const density = sum / area;
-            const t = density;
+            const t       = sum / area;
             const idx = (y * width + x) * 4;
             let hR, hG, hB;
-            if (t < 0.25)      { const s=t*4;   hR=0;          hG=Math.round(s*180); hB=200; }
-            else if (t < 0.5)  { const s=(t-0.25)*4; hR=0;    hG=Math.round(180+s*75); hB=Math.round(200*(1-s)); }
-            else if (t < 0.75) { const s=(t-0.5)*4;  hR=Math.round(s*255); hG=255; hB=0; }
-            else               { const s=(t-0.75)*4; hR=255;  hG=Math.round(255*(1-s)); hB=0; }
+            if (t < 0.25)      { const s=t*4;        hR=0;                hG=Math.round(s*180);     hB=200; }
+            else if (t < 0.5)  { const s=(t-0.25)*4; hR=0;                hG=Math.round(180+s*75);  hB=Math.round(200*(1-s)); }
+            else if (t < 0.75) { const s=(t-0.5)*4;  hR=Math.round(s*255); hG=255;                  hB=0; }
+            else               { const s=(t-0.75)*4; hR=255;              hG=Math.round(255*(1-s)); hB=0; }
 
             const origR = src[idx], origG = src[idx+1], origB = src[idx+2];
             imgData.data[idx]   = Math.round(hR * blendFactor + origR * (1-blendFactor));
@@ -823,59 +894,60 @@ function normalCDF(z) {
 }
 
 /* ==========================================================================
-   RS Steganalysis — Fridrich et al. Regular/Singular Method
+   Heavy Steganalysis — RS (Fridrich) + Block Chi-Square via Web Worker
    ========================================================================== */
 
-function runRSAnalysis() {
+let analysisWorker = null;
+
+function getWorker() {
+    if (analysisWorker === null) {
+        try { analysisWorker = new Worker('analysis.worker.js'); }
+        catch (_) { analysisWorker = false; } // workers unsupported → main-thread fallback
+    }
+    return analysisWorker;
+}
+
+function runHeavyAnalysis() {
     if (!analyzedImage || !analyzedImageData) return;
-    const src = analyzedImageData.data;
     const { width, height } = analyzedImage;
 
-    let R1 = 0, S1 = 0, Rm1 = 0, Sm1 = 0, total = 0;
+    document.getElementById('rs-section').style.display = 'block';
+    document.getElementById('rs-verdict').textContent = 'Hesaplanıyor…';
+    document.getElementById('rs-verdict').style.color = 'var(--text-muted, #9aa7c0)';
 
-    // Process each RGB channel, adjacent horizontal pairs
-    for (const ch of [0, 1, 2]) {
-        for (let y = 0; y < height; y++) {
-            for (let x = 0; x < width - 1; x++) {
-                const idx = (y * width + x) * 4;
-                const a = src[idx + ch], b = src[(idx + 4) + ch];
-                const f0 = Math.abs(b - a);
-
-                // F1: flip LSB of a (XOR 1: even→odd, odd→even)
-                const a1  = a ^ 1;
-                const f1  = Math.abs(b - a1);
-                if (f1 > f0) R1++; else if (f1 < f0) S1++;
-
-                // F-1: negative flip of a (even→a-1, odd→a+1, clamped)
-                const am1 = (a % 2 === 0) ? Math.max(0, a - 1) : Math.min(255, a + 1);
-                const fm1 = Math.abs(b - am1);
-                if (fm1 > f0) Rm1++; else if (fm1 < f0) Sm1++;
-
-                total++;
-            }
-        }
+    const worker = getWorker();
+    if (worker) {
+        const copy = new Uint8ClampedArray(analyzedImageData.data);
+        worker.onmessage = (e) => {
+            const { rs, block } = e.data;
+            updateRSDisplay(rs);
+            drawBlockChiSquare(block, width, height);
+        };
+        worker.onerror = () => { // fallback if worker errors at runtime
+            updateRSDisplay(computeRS(analyzedImageData.data, width, height));
+            drawBlockChiSquare(computeBlockChi(analyzedImageData.data, width, height), width, height);
+        };
+        worker.postMessage({ type: 'analyze', data: copy, width, height }, [copy.buffer]);
+    } else {
+        // Synchronous fallback
+        setTimeout(() => {
+            updateRSDisplay(computeRS(analyzedImageData.data, width, height));
+            drawBlockChiSquare(computeBlockChi(analyzedImageData.data, width, height), width, height);
+        }, 20);
     }
+}
 
-    const r1 = R1/total, s1 = S1/total, rm1 = Rm1/total, sm1 = Sm1/total;
-
-    // Asymmetry between F1 and F-1 indicates steganography
-    // For natural images: r1 ≈ rm1; for stego: r1 > rm1
-    const diff = r1 - rm1;
-    const estimatedRate = Math.min(100, Math.max(0, diff / Math.max(r1, 0.0001) * 200));
-
+function updateRSDisplay(rs) {
+    const { r1, s1, rm1, sm1, estimatedRate } = rs;
     document.getElementById('rs-r1').textContent   = (r1  * 100).toFixed(2) + '%';
     document.getElementById('rs-s1').textContent   = (s1  * 100).toFixed(2) + '%';
     document.getElementById('rs-rm1').textContent  = (rm1 * 100).toFixed(2) + '%';
     document.getElementById('rs-sm1').textContent  = (sm1 * 100).toFixed(2) + '%';
     document.getElementById('rs-rate').textContent = estimatedRate.toFixed(1) + '%';
 
-    // Verdict based on estimated embedding rate. Natural images show small
-    // R1/R-1 asymmetry (a few %), so only flag clearly elevated rates.
-    // If the StegoShield signature was already confirmed, the protocol is the
-    // authority — a low statistical rate just means a small/low-coverage message.
     const verdictEl = document.getElementById('rs-verdict');
     if (signatureDetected && estimatedRate <= 25) {
-        verdictEl.textContent = 'İmza ile doğrulandı (düşük kaplama — istatistiksel iz zayıf)';
+        verdictEl.textContent = 'İmza ile doğrulandı (dağıtık/düşük kaplama — istatistiksel iz zayıf)';
         verdictEl.style.color = 'var(--danger)';
     } else if (estimatedRate > 25) {
         verdictEl.textContent = 'Steganografi İzleri Tespit Edildi'; verdictEl.style.color = 'var(--danger)';
@@ -884,8 +956,105 @@ function runRSAnalysis() {
     } else {
         verdictEl.textContent = 'Doğal Görünüyor (Temiz)'; verdictEl.style.color = 'var(--success)';
     }
+}
 
-    document.getElementById('rs-section').style.display = 'block';
+/* Block Chi-Square heat map — paints per-block stego probability */
+function drawBlockChiSquare(block, width, height) {
+    const section = document.getElementById('blockchi-section');
+    const canvas  = document.getElementById('canvas-blockchi');
+    if (!section || !canvas) return;
+    const { bw, bh, probs, maxProb, blockSize } = block;
+
+    const displayW = Math.min(600, width);
+    const scale    = displayW / width;
+    const displayH = Math.min(360, Math.round(height * scale));
+    canvas.width = displayW; canvas.height = displayH;
+    const ctx = canvas.getContext('2d');
+
+    const cellW = displayW / bw, cellH = displayH / bh;
+    for (let by = 0; by < bh; by++) {
+        for (let bx = 0; bx < bw; bx++) {
+            const p = probs[by * bw + bx]; // 0..1
+            let cR, cG, cB;
+            if (p < 0.5) { const s = p * 2; cR = Math.round(s*255); cG = Math.round(120+s*135); cB = 40; }
+            else         { const s = (p-0.5)*2; cR = 255; cG = Math.round(255*(1-s)); cB = 0; }
+            ctx.fillStyle = `rgba(${cR},${cG},${cB},0.85)`;
+            ctx.fillRect(bx * cellW, by * cellH, Math.ceil(cellW), Math.ceil(cellH));
+        }
+    }
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 1;
+    for (let bx = 1; bx < bw; bx++) { ctx.beginPath(); ctx.moveTo(bx*cellW,0); ctx.lineTo(bx*cellW,displayH); ctx.stroke(); }
+    for (let by = 1; by < bh; by++) { ctx.beginPath(); ctx.moveTo(0,by*cellH); ctx.lineTo(displayW,by*cellH); ctx.stroke(); }
+
+    section.style.display = 'block';
+    const maxEl = document.getElementById('blockchi-max');
+    if (maxEl) maxEl.textContent = (maxProb * 100).toFixed(1) + '%';
+    const sizeEl = document.getElementById('blockchi-size');
+    if (sizeEl) sizeEl.textContent = `${blockSize}×${blockSize} px`;
+}
+
+/* ── Main-thread fallback implementations (mirror the worker) ─────────────── */
+
+function computeRS(src, width, height) {
+    let R1 = 0, S1 = 0, Rm1 = 0, Sm1 = 0, total = 0;
+    for (const ch of [0, 1, 2]) {
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width - 1; x++) {
+                const idx = (y * width + x) * 4;
+                const a = src[idx + ch], b = src[idx + 4 + ch];
+                const f0 = Math.abs(b - a);
+                const a1 = a ^ 1, f1 = Math.abs(b - a1);
+                if (f1 > f0) R1++; else if (f1 < f0) S1++;
+                const am1 = (a % 2 === 0) ? Math.max(0, a - 1) : Math.min(255, a + 1);
+                const fm1 = Math.abs(b - am1);
+                if (fm1 > f0) Rm1++; else if (fm1 < f0) Sm1++;
+                total++;
+            }
+        }
+    }
+    const r1 = R1/total, s1 = S1/total, rm1 = Rm1/total, sm1 = Sm1/total;
+    const diff = r1 - rm1;
+    const estimatedRate = Math.min(100, Math.max(0, diff / Math.max(r1, 0.0001) * 200));
+    return { r1, s1, rm1, sm1, estimatedRate };
+}
+
+function computeBlockChi(src, width, height) {
+    const blockSize = 64;
+    const bw = Math.max(1, Math.ceil(width / blockSize));
+    const bh = Math.max(1, Math.ceil(height / blockSize));
+    const probs = new Float32Array(bw * bh);
+    let maxProb = 0;
+
+    for (let by = 0; by < bh; by++) {
+        for (let bx = 0; bx < bw; bx++) {
+            const x0 = bx * blockSize, y0 = by * blockSize;
+            const x1 = Math.min(width, x0 + blockSize), y1 = Math.min(height, y0 + blockSize);
+            const f = new Float64Array(256);
+            for (let y = y0; y < y1; y++)
+                for (let x = x0; x < x1; x++) {
+                    const idx = (y * width + x) * 4;
+                    f[src[idx]]++; f[src[idx+1]]++; f[src[idx+2]]++;
+                }
+            let chi2 = 0, df = 0;
+            for (let k = 0; k < 128; k++) {
+                const s = f[2*k] + f[2*k+1];
+                if (s > 0) { const d = f[2*k] - f[2*k+1]; chi2 += d*d / s; df++; }
+            }
+            let prob = 0;
+            if (df > 0) {
+                const v = 2 / (9 * df);
+                const z = (Math.pow(chi2 / df, 1/3) - (1 - v)) / Math.sqrt(v);
+                const t = 1 / (1 + 0.2316419 * Math.abs(z));
+                const dd = 0.3989423 * Math.exp(-z * z / 2);
+                const pp = dd * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+                const cdf = z > 0 ? 1 - pp : pp;
+                prob = 1 - cdf;
+            }
+            probs[by * bw + bx] = prob;
+            if (prob > maxProb) maxProb = prob;
+        }
+    }
+    return { bw, bh, probs, maxProb, blockSize };
 }
 
 /* ==========================================================================

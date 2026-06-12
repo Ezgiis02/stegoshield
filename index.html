@@ -363,6 +363,21 @@
                                 <strong id="rs-verdict">—</strong>
                             </div>
                         </div>
+
+                        <!-- Block Chi-Square Heat Map -->
+                        <div class="rs-section" id="blockchi-section" style="display: none;">
+                            <div class="rs-header">
+                                <h3>Blok Chi-Square Haritası <span class="diff-badge">64×64 pencere</span></h3>
+                                <p class="rs-desc">Chi-square testi tüm görsele değil, kaydırmalı bloklara uygulanır. Kırmızı bloklar yüksek steganografi olasılığını gösterir — küçük/yerel gömmeler böyle yakalanır.</p>
+                            </div>
+                            <div class="canvas-wrapper diff-canvas-wrapper">
+                                <canvas id="canvas-blockchi"></canvas>
+                            </div>
+                            <div class="diff-stats">
+                                <div class="diff-stat"><span>En Yüksek Blok Olasılığı</span><strong id="blockchi-max">—</strong></div>
+                                <div class="diff-stat"><span>Blok Boyutu</span><strong id="blockchi-size">—</strong></div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Column 2: Visual Steganalysis -->
@@ -434,8 +449,8 @@
                         </div>
                         <div class="learn-card">
                             <div class="learn-card-icon">🔒</div>
-                            <h3>RC4 Stream Cipher Şifreleme</h3>
-                            <p>Sadece LSB bitlerine veri yazmak güvenli değildir. Kötü amaçlı bir aktör LSB bitlerini okuyunca mesajı doğrudan elde edebilir. Bu açığı kapatmak için mesajı RC4 akış şifresiyle şifreleriz. Parola olmadan sadece anlamsız rastgele bit dizisi elde edilir.</p>
+                            <h3>AES-256-GCM Şifreleme</h3>
+                            <p>Sadece LSB bitlerine veri yazmak güvenli değildir; LSB'leri okuyan biri mesajı doğrudan elde edebilir. Bu yüzden mesaj, parolanızdan <strong>PBKDF2</strong> (100.000 tur) ile türetilen anahtarla <strong>AES-256-GCM</strong> kullanılarak şifrelenir. GCM aynı zamanda bir kimlik doğrulama etiketi (auth tag) üretir; yanlış parola girildiğinde çözme baştan reddedilir, çöp veri çıkmaz. Her gizlemede rastgele Salt ve IV kullanılır.</p>
                         </div>
                         <div class="learn-card">
                             <div class="learn-card-icon">📊</div>
