@@ -869,11 +869,13 @@ function runRSAnalysis() {
     document.getElementById('rs-sm1').textContent  = (sm1 * 100).toFixed(2) + '%';
     document.getElementById('rs-rate').textContent = estimatedRate.toFixed(1) + '%';
 
+    // Verdict based on estimated embedding rate. Natural images show small
+    // R1/R-1 asymmetry (a few %), so only flag clearly elevated rates.
     const verdictEl = document.getElementById('rs-verdict');
-    if (diff > 0.005) {
+    if (estimatedRate > 25) {
         verdictEl.textContent = 'Steganografi İzleri Tespit Edildi'; verdictEl.style.color = 'var(--danger)';
-    } else if (diff > 0.001) {
-        verdictEl.textContent = 'Hafif Anomali Mevcut'; verdictEl.style.color = 'var(--warning)';
+    } else if (estimatedRate > 12) {
+        verdictEl.textContent = 'Şüpheli Asimetri'; verdictEl.style.color = 'var(--warning)';
     } else {
         verdictEl.textContent = 'Doğal Görünüyor (Temiz)'; verdictEl.style.color = 'var(--success)';
     }
