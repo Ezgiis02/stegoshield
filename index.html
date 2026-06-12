@@ -132,6 +132,18 @@
                             </div>
                         </div>
 
+                        <!-- Pixel Diff Preview -->
+                        <div class="diff-section" id="diff-section" style="display: none;">
+                            <div class="diff-header">
+                                <h3>Piksel Farkı Haritası <span class="diff-badge">×255 büyütülmüş</span></h3>
+                                <p class="diff-desc">Değiştirilen pikseller renkli, dokunulmayan pikseller siyah gösterilir. Mesajın görselde kapladığı alan.</p>
+                            </div>
+                            <div class="canvas-wrapper diff-canvas-wrapper">
+                                <canvas id="canvas-diff-encode"></canvas>
+                            </div>
+                            <div class="diff-stats" id="diff-stats"></div>
+                        </div>
+
                         <div class="encode-stats-bar" id="encode-stats" style="display: none;">
                             <div class="stat-bubble">
                                 <span class="bubble-title">Gereken Kapasite:</span>

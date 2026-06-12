@@ -1123,6 +1123,87 @@ footer p {
 }
 
 /* ==========================================================================
+   Pixel Diff Map
+   ========================================================================== */
+
+.diff-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    animation: slideDown 0.3s ease forwards;
+}
+
+.diff-header {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.diff-header h3 {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    font-family: var(--font-header);
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.diff-badge {
+    font-size: 0.7rem;
+    background: rgba(var(--primary-rgb), 0.12);
+    color: var(--primary);
+    border: 1px solid rgba(var(--primary-rgb), 0.25);
+    border-radius: 20px;
+    padding: 0.15rem 0.6rem;
+    font-family: var(--font-body);
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.diff-desc {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+.diff-canvas-wrapper {
+    min-height: 120px;
+    max-height: 260px;
+}
+
+.diff-stats {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.diff-stat {
+    flex: 1;
+    min-width: 100px;
+    background: rgba(8, 10, 16, 0.5);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0.5rem 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.diff-stat span {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.diff-stat strong {
+    font-family: var(--font-header);
+    font-size: 0.9rem;
+    color: var(--primary);
+}
+
+/* ==========================================================================
    Decode Metadata Panel
    ========================================================================== */
 

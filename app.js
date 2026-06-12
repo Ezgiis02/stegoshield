@@ -362,6 +362,8 @@ function handleEncode() {
             document.getElementById('placeholder-stego-encode').style.display = 'none';
             document.getElementById('btn-download-stego').style.display = 'flex';
 
+            renderDiffMap(originalImageData.data, imgData.data, width, height);
+
             const encLabel = (passcode && passcode.trim()) ? 'RC4 şifreli' : 'şifresiz';
             showToast('success', 'Gizleme Tamamlandı!',
                 `${message.length} karakter, ${CHANNEL_NAMES[channel]} kanalına ${encLabel} olarak yazıldı.`);
@@ -372,6 +374,48 @@ function handleEncode() {
             updateCapacityStats();
         }
     }, 50);
+}
+
+function renderDiffMap(origData, stegoData, width, height) {
+    const section = document.getElementById('diff-section');
+    const canvas  = document.getElementById('canvas-diff-encode');
+    canvas.width  = width;
+    canvas.height = height;
+    const ctx     = canvas.getContext('2d');
+    const diff    = ctx.createImageData(width, height);
+
+    let changedPixels = 0;
+    let changedBits   = 0;
+
+    for (let i = 0; i < origData.length; i += 4) {
+        const dR = Math.abs(stegoData[i]   - origData[i]);
+        const dG = Math.abs(stegoData[i+1] - origData[i+1]);
+        const dB = Math.abs(stegoData[i+2] - origData[i+2]);
+
+        // Amplify to 255 so single-bit changes become visible
+        diff.data[i]   = dR * 255;
+        diff.data[i+1] = dG * 255;
+        diff.data[i+2] = dB * 255;
+        diff.data[i+3] = 255;
+
+        if (dR || dG || dB) {
+            changedPixels++;
+            changedBits += (dR ? 1 : 0) + (dG ? 1 : 0) + (dB ? 1 : 0);
+        }
+    }
+
+    ctx.putImageData(diff, 0, 0);
+    section.style.display = 'block';
+
+    const totalPixels = width * height;
+    const coveragePct = (changedPixels / totalPixels * 100).toFixed(2);
+
+    document.getElementById('diff-stats').innerHTML = `
+        <div class="diff-stat"><span>Değiştirilen Piksel</span><strong>${changedPixels.toLocaleString('tr-TR')}</strong></div>
+        <div class="diff-stat"><span>Toplam Piksel</span><strong>${totalPixels.toLocaleString('tr-TR')}</strong></div>
+        <div class="diff-stat"><span>Kaplama Oranı</span><strong>${coveragePct}%</strong></div>
+        <div class="diff-stat"><span>Yazılan Bit</span><strong>${changedBits.toLocaleString('tr-TR')}</strong></div>
+    `;
 }
 
 function downloadStegoImage() {
