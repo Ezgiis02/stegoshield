@@ -871,8 +871,13 @@ function runRSAnalysis() {
 
     // Verdict based on estimated embedding rate. Natural images show small
     // R1/R-1 asymmetry (a few %), so only flag clearly elevated rates.
+    // If the StegoShield signature was already confirmed, the protocol is the
+    // authority — a low statistical rate just means a small/low-coverage message.
     const verdictEl = document.getElementById('rs-verdict');
-    if (estimatedRate > 25) {
+    if (signatureDetected && estimatedRate <= 25) {
+        verdictEl.textContent = 'İmza ile doğrulandı (düşük kaplama — istatistiksel iz zayıf)';
+        verdictEl.style.color = 'var(--danger)';
+    } else if (estimatedRate > 25) {
         verdictEl.textContent = 'Steganografi İzleri Tespit Edildi'; verdictEl.style.color = 'var(--danger)';
     } else if (estimatedRate > 12) {
         verdictEl.textContent = 'Şüpheli Asimetri'; verdictEl.style.color = 'var(--warning)';
