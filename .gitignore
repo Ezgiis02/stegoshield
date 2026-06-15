@@ -1,3 +1,10 @@
 .claude/
-*.docx
 node_modules/
+
+# Harici klon (kendi .git'i + 38MB model dosyaları var) — repoya dahil edilmez
+steganalysis-ml/
+
+# Python
+__pycache__/
+*.pyc
+backend/__pycache__/

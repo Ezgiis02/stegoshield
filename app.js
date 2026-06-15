@@ -12,6 +12,11 @@ let originalImageData = null;
 let stegoImageData = null;
 let analyzedImageData = null;
 let originalFileName = '';
+let analyzedFile = null;                       // ML backend'e gönderilecek ham dosya
+const ML_BACKEND = 'http://localhost:5000';    // Python steganaliz sunucusu
+
+// Nihai karar için her yöntemin son sonucu
+let verdictState = { sig: null, chi: null, rs: null, ml: null };
 
 // Protocol constants
 const MAGIC_BYTES   = [83, 84, 71]; // ASCII: "STG"
@@ -263,6 +268,7 @@ function setupDragDrop(zoneId, inputId, infoId, callback) {
 
 function handleFileSelect(file, infoId, callback) {
     if (infoId === 'info-encode') originalFileName = file.name;
+    if (infoId === 'info-analyze') analyzedFile = file;
     document.getElementById(infoId).style.display = 'block';
     document.getElementById(infoId).textContent = `✓  ${file.name}  (${(file.size / 1024).toFixed(1)} KB)`;
     const reader = new FileReader();
@@ -329,9 +335,11 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('analysis-controls-box').style.display = 'flex';
         document.getElementById('placeholder-histogram').style.display = 'none';
 
+        verdictState = { sig: null, chi: null, rs: null, ml: null };
         runSignatureDetection();
         runAnalysis();
         runHeavyAnalysis();        // RS + blok chi-square (Web Worker)
+        runMLPrediction();         // Sunucudaki ML modeli (Python backend)
         renderHistogram(analyzedImageData);
         showToast('info', 'Analiz Başlatıldı', `${img.width}×${img.height} piksel taranıyor.`);
     });
@@ -717,12 +725,14 @@ function runSignatureDetection() {
                         <span>Kanal: ${CHANNEL_NAMES[ch]} &nbsp;|&nbsp; ${DEPTH_NAMES[dep]} &nbsp;|&nbsp; ${encryptFlag ? 'AES-256-GCM' : 'Şifresiz'} &nbsp;|&nbsp; Payload: ${dataLength.toLocaleString('tr-TR')} bayt</span>
                     </div>`;
                 updateGaugeFromSignature(true);
+                verdictState.sig = true; updateFinalVerdict();
                 return;
             }
         }
     }
 
     signatureDetected = false;
+    verdictState.sig = false; updateFinalVerdict();
     el.className = 'signature-box sig-clean';
     el.innerHTML = `
         <span class="sig-icon">✓</span>
@@ -744,6 +754,103 @@ function updateGaugeFromSignature(detected) {
     document.getElementById('analysis-status-title').textContent = 'Gizli Veri Tespit Edildi!';
     document.getElementById('analysis-status-desc').textContent =
         'StegoShield protokol imzası doğrulandı. Bu görselde gizli veri kesin olarak mevcut.';
+}
+
+/* ==========================================================================
+   Combined Final Verdict — fuses signature + chi-square + RS + ML
+   ========================================================================== */
+
+function setVerdictChip(id, text, hit) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.querySelector('strong').textContent = text;
+    el.className = 'fv-method' + (hit === true ? ' fv-hit' : hit === false ? ' fv-ok' : '');
+}
+
+function updateFinalVerdict() {
+    const el = document.getElementById('final-verdict');
+    if (!el) return;
+    el.style.display = 'block';
+    const s = verdictState;
+
+    const chiHigh = s.chi !== null && s.chi >= 0.75;
+    const rsHigh  = s.rs  !== null && s.rs  > 25;
+    const mlHigh  = s.ml  !== null && s.ml  >= 50;
+
+    setVerdictChip('fv-sig', s.sig === null ? '—' : (s.sig ? 'STEGO' : 'temiz'), s.sig);
+    setVerdictChip('fv-chi', s.chi === null ? '—' : `%${Math.round(s.chi * 100)}`, s.chi === null ? null : chiHigh);
+    setVerdictChip('fv-rs',  s.rs  === null ? '—' : `%${s.rs.toFixed(0)}`,         s.rs  === null ? null : rsHigh);
+    setVerdictChip('fv-ml',  s.ml  === null ? '…' : `%${s.ml.toFixed(0)}`,         s.ml  === null ? null : mlHigh);
+
+    let level, title, desc, icon;
+    if (s.sig) {
+        level = 'danger'; icon = '⚠'; title = 'Gizli Veri Tespit Edildi — Kesin';
+        desc = 'StegoShield protokol imzası doğrulandı. Mesaj boyutundan bağımsız %100 kesin tespit.';
+    } else if (mlHigh || chiHigh || rsHigh) {
+        level = 'warn'; icon = '⚠'; title = 'Muhtemel Steganografi';
+        const hits = [];
+        if (mlHigh) hits.push('ML'); if (chiHigh) hits.push('Chi-Square'); if (rsHigh) hits.push('RS');
+        desc = `İstatistiksel/ML yöntemler iz buldu (${hits.join(', ')}). Yüksek olasılıkla veri gizlenmiş.`;
+    } else if (s.sig === false && (s.ml !== null || s.chi !== null)) {
+        level = 'clean'; icon = '✓'; title = 'Görsel Temiz Görünüyor';
+        desc = 'İmza bulunamadı, istatistiksel ve ML yöntemler anlamlı iz tespit etmedi. (Çok küçük dağıtık mesajlar yine de gizli olabilir.)';
+    } else {
+        level = 'idle'; icon = '◎'; title = 'Nihai Karar'; desc = 'Yöntemler değerlendiriliyor…';
+    }
+    el.className = `final-verdict fv-${level}`;
+    document.getElementById('fv-icon').textContent  = icon;
+    document.getElementById('fv-title').textContent = title;
+    document.getElementById('fv-desc').textContent  = desc;
+}
+
+/* ==========================================================================
+   ML Prediction — Python backend (RandomForest, gerçek görsellerle eğitilmiş)
+   ========================================================================== */
+
+async function runMLPrediction() {
+    const section = document.getElementById('ml-section');
+    const statusEl = document.getElementById('ml-status');
+    const resultEl = document.getElementById('ml-result');
+    if (!section) return;
+    section.style.display = 'block';
+    statusEl.style.display = 'block';
+    statusEl.textContent = 'Sunucudaki model çalışıyor…';
+    resultEl.style.display = 'none';
+
+    if (!analyzedFile) { statusEl.textContent = 'Görsel dosyası bulunamadı.'; return; }
+
+    try {
+        const form = new FormData();
+        form.append('image', analyzedFile);
+        const res = await fetch(`${ML_BACKEND}/predict`, { method: 'POST', body: form });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+
+        const pct = data.stego_probability;
+        const isStego = data.label === 'stego';
+        verdictState.ml = pct; updateFinalVerdict();
+        statusEl.style.display = 'none';
+        resultEl.style.display = 'block';
+        resultEl.className = `ml-result ${isStego ? 'ml-stego' : 'ml-clean'}`;
+
+        const feats = data.features;
+        const featRows = Object.entries(feats).map(([k, v]) =>
+            `<div class="ml-feat"><span>${k}</span><strong>${v}</strong></div>`).join('');
+
+        resultEl.innerHTML = `
+            <div class="ml-verdict">
+                <span class="ml-badge">${isStego ? '⚠ STEGO' : '✓ TEMİZ'}</span>
+                <span class="ml-prob">Stego olasılığı: <strong>%${pct}</strong></span>
+            </div>
+            <div class="ml-bar"><div class="ml-bar-fill" style="width:${pct}%"></div></div>
+            <div class="ml-feats">${featRows}</div>
+            <div class="ml-meta">Model: Random Forest &nbsp;|&nbsp; Eğitim doğruluğu: %${data.model_accuracy} &nbsp;|&nbsp; Sunucu tahmini</div>`;
+    } catch (e) {
+        statusEl.style.display = 'block';
+        resultEl.style.display = 'none';
+        statusEl.innerHTML = `⚠ ML sunucusuna ulaşılamadı. Backend'i başlatın:<br><code>cd backend &amp;&amp; python app.py</code>`;
+        verdictState.ml = null; updateFinalVerdict();
+    }
 }
 
 /* ==========================================================================
@@ -840,6 +947,8 @@ function runAnalysis() {
     document.getElementById('metric-pvalue').textContent   = (1 - stegoProb).toFixed(6);
     document.getElementById('metric-entropy').textContent  = entropy.toFixed(4);
     document.getElementById('metric-lsb-mean').textContent = p1.toFixed(4);
+
+    verdictState.chi = stegoProb; updateFinalVerdict();
 }
 
 /* LSB Heat Map — local density via integral image (thermal color scale) */
@@ -944,6 +1053,7 @@ function updateRSDisplay(rs) {
     document.getElementById('rs-rm1').textContent  = (rm1 * 100).toFixed(2) + '%';
     document.getElementById('rs-sm1').textContent  = (sm1 * 100).toFixed(2) + '%';
     document.getElementById('rs-rate').textContent = estimatedRate.toFixed(1) + '%';
+    verdictState.rs = estimatedRate; updateFinalVerdict();
 
     const verdictEl = document.getElementById('rs-verdict');
     if (signatureDetected && estimatedRate <= 25) {

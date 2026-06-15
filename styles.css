@@ -1404,3 +1404,92 @@ footer p {
         transform: translateY(0);
     }
 }
+
+/* ==========================================================================
+   ML Prediction Panel (Python backend)
+   ========================================================================== */
+.ml-status {
+    padding: 16px;
+    text-align: center;
+    color: var(--text-muted, #9aa7c0);
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+.ml-status code {
+    background: rgba(0,0,0,0.35);
+    padding: 2px 8px;
+    border-radius: 5px;
+    color: var(--primary, #00e5ff);
+    font-size: 0.85rem;
+}
+.ml-result {
+    border-radius: 12px;
+    padding: 16px;
+    border: 1px solid rgba(255,255,255,0.08);
+}
+.ml-result.ml-clean { background: linear-gradient(135deg, rgba(0,230,118,0.10), rgba(0,230,118,0.02)); border-color: rgba(0,230,118,0.35); }
+.ml-result.ml-stego { background: linear-gradient(135deg, rgba(255,23,68,0.12), rgba(255,23,68,0.02)); border-color: rgba(255,23,68,0.4); }
+.ml-verdict {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 10px; margin-bottom: 12px;
+}
+.ml-badge { font-weight: 800; font-size: 1.1rem; letter-spacing: 0.5px; }
+.ml-clean .ml-badge { color: var(--success, #00e676); }
+.ml-stego .ml-badge { color: var(--danger, #ff1744); }
+.ml-prob { color: var(--text-muted, #9aa7c0); font-size: 0.95rem; }
+.ml-prob strong { color: var(--text, #e8eef7); font-size: 1.05rem; }
+.ml-bar {
+    height: 10px; border-radius: 6px; background: rgba(255,255,255,0.08);
+    overflow: hidden; margin-bottom: 14px;
+}
+.ml-bar-fill {
+    height: 100%; border-radius: 6px;
+    background: linear-gradient(90deg, #00e676, #ffd600 55%, #ff1744);
+    transition: width 0.5s ease;
+}
+.ml-feats {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 8px; margin-bottom: 12px;
+}
+.ml-feat {
+    display: flex; flex-direction: column; gap: 2px;
+    background: rgba(0,0,0,0.25); border-radius: 8px; padding: 8px 10px;
+}
+.ml-feat span { font-size: 0.72rem; color: var(--text-muted, #9aa7c0); }
+.ml-feat strong { font-size: 0.95rem; color: var(--primary, #00e5ff); font-variant-numeric: tabular-nums; }
+.ml-meta { font-size: 0.78rem; color: var(--text-muted, #9aa7c0); text-align: center; opacity: 0.8; }
+
+/* ==========================================================================
+   Combined Final Verdict Panel
+   ========================================================================== */
+.final-verdict {
+    border-radius: 14px;
+    padding: 16px 18px;
+    margin-bottom: 16px;
+    border: 1px solid rgba(255,255,255,0.10);
+    background: rgba(255,255,255,0.03);
+    transition: all 0.3s ease;
+}
+.final-verdict.fv-danger { background: linear-gradient(135deg, rgba(255,23,68,0.16), rgba(255,23,68,0.03)); border-color: rgba(255,23,68,0.5); }
+.final-verdict.fv-warn   { background: linear-gradient(135deg, rgba(255,170,0,0.14), rgba(255,170,0,0.03)); border-color: rgba(255,170,0,0.5); }
+.final-verdict.fv-clean  { background: linear-gradient(135deg, rgba(0,230,118,0.12), rgba(0,230,118,0.02)); border-color: rgba(0,230,118,0.45); }
+.fv-head { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+.fv-icon { font-size: 1.9rem; line-height: 1; }
+.fv-danger .fv-icon { color: var(--danger, #ff1744); }
+.fv-warn   .fv-icon { color: var(--warning, #ffaa00); }
+.fv-clean  .fv-icon { color: var(--success, #00e676); }
+.fv-body { display: flex; flex-direction: column; gap: 3px; }
+.fv-body strong { font-size: 1.12rem; color: var(--text, #e8eef7); }
+.fv-body span { font-size: 0.86rem; color: var(--text-muted, #9aa7c0); line-height: 1.45; }
+.fv-methods { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.fv-method {
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    background: rgba(0,0,0,0.28); border-radius: 9px; padding: 9px 6px;
+    border: 1px solid transparent;
+}
+.fv-method span { font-size: 0.72rem; color: var(--text-muted, #9aa7c0); }
+.fv-method strong { font-size: 0.95rem; color: var(--text, #e8eef7); font-variant-numeric: tabular-nums; }
+.fv-method.fv-hit { border-color: rgba(255,23,68,0.5); background: rgba(255,23,68,0.10); }
+.fv-method.fv-hit strong { color: var(--danger, #ff1744); }
+.fv-method.fv-ok { border-color: rgba(0,230,118,0.4); background: rgba(0,230,118,0.07); }
+.fv-method.fv-ok strong { color: var(--success, #00e676); }

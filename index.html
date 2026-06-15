@@ -289,6 +289,23 @@
                             <div class="file-info" id="info-analyze"></div>
                         </div>
 
+                        <!-- Combined Final Verdict -->
+                        <div class="final-verdict fv-idle" id="final-verdict" style="display: none;">
+                            <div class="fv-head">
+                                <span class="fv-icon" id="fv-icon">◎</span>
+                                <div class="fv-body">
+                                    <strong id="fv-title">Nihai Karar</strong>
+                                    <span id="fv-desc">Tüm yöntemler değerlendiriliyor…</span>
+                                </div>
+                            </div>
+                            <div class="fv-methods">
+                                <div class="fv-method" id="fv-sig"><span>İmza</span><strong>—</strong></div>
+                                <div class="fv-method" id="fv-chi"><span>Chi-Square</span><strong>—</strong></div>
+                                <div class="fv-method" id="fv-rs"><span>RS</span><strong>—</strong></div>
+                                <div class="fv-method" id="fv-ml"><span>ML (Sunucu)</span><strong>—</strong></div>
+                            </div>
+                        </div>
+
                         <!-- Signature Detection -->
                         <div class="signature-box sig-idle" id="signature-result">
                             <span class="sig-icon">◎</span>
@@ -377,6 +394,16 @@
                                 <div class="diff-stat"><span>En Yüksek Blok Olasılığı</span><strong id="blockchi-max">—</strong></div>
                                 <div class="diff-stat"><span>Blok Boyutu</span><strong id="blockchi-size">—</strong></div>
                             </div>
+                        </div>
+
+                        <!-- ML Prediction (Python backend) -->
+                        <div class="rs-section ml-box" id="ml-section" style="display: none;">
+                            <div class="rs-header">
+                                <h3>Makine Öğrenmesi Tahmini <span class="diff-badge">Sunucu Modeli</span></h3>
+                                <p class="rs-desc">Gerçek görsellerle eğitilmiş Random Forest modeli (Python backend). Görsel sunucuya gönderilir; chi-square, RS, LSB entropisi/ortalaması ve blok-chi özelliklerinden "stego/temiz" tahmini döner.</p>
+                            </div>
+                            <div class="ml-status" id="ml-status">Sunucudaki model çalışıyor…</div>
+                            <div class="ml-result" id="ml-result" style="display: none;"></div>
                         </div>
                     </div>
 
